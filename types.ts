@@ -1,10 +1,9 @@
 export enum ViewState {
   HOME = 'HOME',
-  SHOP = 'SHOP',
   REPAIR_LOOKUP = 'REPAIR_LOOKUP',
-  EMPLOYEE_LOGIN = 'EMPLOYEE_LOGIN',
   EMPLOYEE_DASHBOARD = 'EMPLOYEE_DASHBOARD',
-  CUSTOM_CASE = 'CUSTOM_CASE'
+  CUSTOM_CASE = 'CUSTOM_CASE',
+  ADMIN = 'ADMIN'
 }
 
 export type Language = 'EN' | 'CN' | 'ES' | 'FR' | 'DE';

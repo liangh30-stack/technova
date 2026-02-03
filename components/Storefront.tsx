@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { Product, Language } from '../types';
-import { ShoppingBag, Star, Flame, ChevronRight, Smartphone, Shield, Zap, Battery, Plug, Headphones, Grid, Layers, Menu, X, Info, Sparkles, Wand2 } from 'lucide-react';
-import { TRANSLATIONS, BRAND_MODELS, MOCK_PRODUCTS, HOT_BUNDLE } from '../constants';
+import { ShoppingBag, Star, Flame, ChevronRight, Smartphone, Shield, Zap, Battery, Plug, Headphones, Grid, Layers, Menu, X, Info, Sparkles, Wand2, Search } from 'lucide-react';
+import { TRANSLATIONS, BRAND_MODELS } from '../constants';
 
 interface StorefrontProps {
   products: Product[];
   onAddToCart: (product: Product) => void;
   lang: Language;
-  onTrackOrderClick: () => void;
+  onTrackOrderClick: (searchTerm?: string) => void;
   onStartCustomDesign: () => void;
 }
 
@@ -15,26 +15,54 @@ const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, on
   const t = TRANSLATIONS[lang];
   const [selectedBrand, setSelectedBrand] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [selectedCategory, setSelectedCategory] = useState<string>(''); 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+  const [detailSelectedModel, setDetailSelectedModel] = useState<string>('');
   const [trackInput, setTrackInput] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+
+  // Reset selected model when detail product changes
+  const openProductDetail = (product: Product) => {
+    setDetailProduct(product);
+    setDetailSelectedModel(product.compatibleModels?.[0] || '');
+  };
+
+  const handleAddToCartFromDetail = () => {
+    if (!detailProduct) return;
+    const productWithModel = {
+      ...detailProduct,
+      selectedModel: detailSelectedModel || undefined
+    };
+    onAddToCart(productWithModel);
+    setDetailProduct(null);
+    setDetailSelectedModel('');
+  };
 
   const availableModels = selectedBrand ? BRAND_MODELS[selectedBrand] || [] : [];
-  const allProducts = [HOT_BUNDLE, ...MOCK_PRODUCTS];
 
   const displayProducts = useMemo(() => {
-    return allProducts.filter(p => {
+    return products.filter(p => {
+      // Text search filter
+      if (productSearch.trim()) {
+        const searchLower = productSearch.toLowerCase();
+        const matchesSearch =
+          p.name.toLowerCase().includes(searchLower) ||
+          p.description.toLowerCase().includes(searchLower) ||
+          p.category.toLowerCase().includes(searchLower) ||
+          (p.brand && p.brand.toLowerCase().includes(searchLower));
+        if (!matchesSearch) return false;
+      }
       if (selectedBrand && p.brand && p.brand !== selectedBrand && p.brand !== 'Universal' && !p.isBundle) return false;
       if (selectedModel) {
-        if (p.brand === 'Universal') return true; 
-        if (p.isBundle) return true; 
+        if (p.brand === 'Universal') return true;
+        if (p.isBundle) return true;
         if (p.compatibleModels && !p.compatibleModels.includes(selectedModel)) return false;
       }
       if (selectedCategory && p.category !== selectedCategory && !p.isBundle) return false;
       return true;
     });
-  }, [selectedBrand, selectedModel, selectedCategory]);
+  }, [products, selectedBrand, selectedModel, selectedCategory, productSearch]);
 
   const CATEGORIES = [
     { id: '', label: 'All Accessories', icon: Grid },
@@ -66,23 +94,24 @@ const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, on
       {/* 1. REPAIR TRACKER BAR (Quick Access) */}
       <div className="bg-brand-dark py-4 px-4 sticky top-16 z-30 shadow-md">
          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-             <button 
-               onClick={onTrackOrderClick}
+             <button
+               onClick={() => onTrackOrderClick()}
                className="flex items-center gap-3 text-white hover:text-brand-pink transition-colors group p-1 rounded-lg"
              >
                 <div className="p-2 bg-white/10 rounded-full group-hover:bg-brand-pink/20"><Smartphone size={20}/></div>
                 <span className="font-medium text-sm md:text-base">{t.trackTitle}</span>
              </button>
              <div className="flex w-full md:w-auto gap-2">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder={t.kbSearchPlaceholder}
                   className="flex-1 md:w-64 px-4 py-2 rounded-full text-sm border-none focus:ring-2 focus:ring-brand-teal outline-none"
                   value={trackInput}
                   onChange={e => setTrackInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && trackInput.trim() && onTrackOrderClick(trackInput)}
                 />
-                <button 
-                  onClick={onTrackOrderClick}
+                <button
+                  onClick={() => onTrackOrderClick(trackInput)}
                   className="bg-brand-teal text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-blue-600 transition-colors"
                 >
                   {t.searchButton}
@@ -181,15 +210,32 @@ const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, on
               </div>
 
               <div id="product-grid">
+                {/* Product Search */}
+                <div className="relative mb-6">
+                  <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder={lang === 'ES' ? 'Buscar productos...' : lang === 'CN' ? '搜索产品...' : 'Search products...'}
+                    value={productSearch}
+                    onChange={e => setProductSearch(e.target.value)}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-pink focus:border-brand-pink outline-none text-sm"
+                  />
+                  {productSearch && (
+                    <button onClick={() => setProductSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex justify-between items-end mb-6">
                   <div>
                     <h2 className="text-2xl font-bold text-brand-dark mb-1">
-                      {selectedCategory ? getCategoryLabel(selectedCategory, lang) : t.trending}
+                      {productSearch ? (lang === 'ES' ? `Resultados: "${productSearch}"` : lang === 'CN' ? `搜索: "${productSearch}"` : `Results: "${productSearch}"`) : (selectedCategory ? getCategoryLabel(selectedCategory, lang) : t.trending)}
                     </h2>
-                    <p className="text-gray-500 text-xs">{displayProducts.length} items found</p>
+                    <p className="text-gray-500 text-xs">{displayProducts.length} {lang === 'ES' ? 'productos encontrados' : lang === 'CN' ? '个商品' : 'items found'}</p>
                   </div>
-                  {(selectedBrand || selectedCategory) && (
-                    <button onClick={() => {setSelectedBrand(''); setSelectedModel(''); setSelectedCategory('');}} className="text-brand-pink text-xs font-bold underline">Limpiar Filtros</button>
+                  {(selectedBrand || selectedCategory || productSearch) && (
+                    <button onClick={() => {setSelectedBrand(''); setSelectedModel(''); setSelectedCategory(''); setProductSearch('');}} className="text-brand-pink text-xs font-bold underline">{lang === 'ES' ? 'Limpiar Filtros' : lang === 'CN' ? '清除筛选' : 'Clear Filters'}</button>
                   )}
                 </div>
 
@@ -201,7 +247,7 @@ const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, on
                             <Flame size={10} fill="currentColor" /> {t.hotBundle}
                          </div>
                       )}
-                      <div className="relative aspect-[4/5] w-full rounded-xl overflow-hidden mb-3 bg-gray-100 cursor-zoom-in" onClick={() => setDetailProduct(product)}>
+                      <div className="relative aspect-[4/5] w-full rounded-xl overflow-hidden mb-3 bg-gray-100 cursor-zoom-in" onClick={() => openProductDetail(product)}>
                         <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                            <Info size={32} className="text-white" />
@@ -227,23 +273,50 @@ const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, on
 
       {detailProduct && (
         <>
-          <div className="fixed inset-0 bg-black/60 z-[100] backdrop-blur-sm animate-in fade-in" onClick={() => setDetailProduct(null)} />
+          <div className="fixed inset-0 bg-black/60 z-[100] backdrop-blur-sm animate-in fade-in" onClick={() => { setDetailProduct(null); setDetailSelectedModel(''); }} />
           <div className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-4xl max-h-[90vh] bg-white z-[110] rounded-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95">
-             <button onClick={() => setDetailProduct(null)} className="absolute top-4 right-4 z-[120] bg-white/80 hover:bg-white text-brand-dark p-2 rounded-full shadow-lg"><X size={20} /></button>
-             <div className="w-full md:w-1/2 bg-gray-100 flex items-center justify-center overflow-hidden">
+             <button onClick={() => { setDetailProduct(null); setDetailSelectedModel(''); }} className="absolute top-4 right-4 z-[120] bg-white/80 hover:bg-white text-brand-dark p-2 rounded-full shadow-lg"><X size={20} /></button>
+             <div className="w-full md:w-1/2 bg-gray-100 flex items-center justify-center overflow-hidden max-h-[300px] md:max-h-none">
                 <img src={detailProduct.image} className="w-full h-full object-cover" alt={detailProduct.name} />
              </div>
-             <div className="w-full md:w-1/2 p-8 md:p-12 overflow-y-auto">
+             <div className="w-full md:w-1/2 p-6 md:p-10 overflow-y-auto">
                 <div className="flex items-center gap-2 mb-2 text-brand-pink text-xs font-bold uppercase tracking-widest">{detailProduct.category}</div>
-                <h2 className="text-3xl font-black text-brand-dark mb-4 leading-tight">{detailProduct.name}</h2>
-                <div className="text-3xl font-bold text-brand-pink mb-6">€{detailProduct.price.toFixed(2)}</div>
-                <p className="text-gray-600 mb-8">{detailProduct.description}</p>
-                <button 
-                  onClick={() => { onAddToCart(detailProduct); setDetailProduct(null); }}
-                  className="w-full bg-brand-dark text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-teal transition-all flex items-center justify-center gap-3 shadow-xl"
+                <h2 className="text-2xl md:text-3xl font-black text-brand-dark mb-3 leading-tight">{detailProduct.name}</h2>
+                <div className="text-2xl md:text-3xl font-bold text-brand-pink mb-4">€{detailProduct.price.toFixed(2)}</div>
+                <p className="text-gray-600 mb-6 text-sm">{detailProduct.description}</p>
+
+                {/* Model Selection */}
+                {detailProduct.compatibleModels && detailProduct.compatibleModels.length > 0 && (
+                  <div className="mb-6">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 block">
+                      {lang === 'ES' ? 'Selecciona tu modelo' : lang === 'CN' ? '选择型号' : 'Select your model'} *
+                    </label>
+                    <select
+                      value={detailSelectedModel}
+                      onChange={e => setDetailSelectedModel(e.target.value)}
+                      className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-pink focus:border-brand-pink outline-none text-sm bg-gray-50"
+                    >
+                      <option value="">{lang === 'ES' ? 'Elige un modelo...' : lang === 'CN' ? '请选择...' : 'Choose a model...'}</option>
+                      {detailProduct.compatibleModels.map(model => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleAddToCartFromDetail}
+                  disabled={detailProduct.compatibleModels && detailProduct.compatibleModels.length > 0 && !detailSelectedModel}
+                  className="w-full bg-brand-dark text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-teal transition-all flex items-center justify-center gap-3 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <ShoppingBag size={20} /> Añadir al Carrito
+                  <ShoppingBag size={20} /> {lang === 'ES' ? 'Añadir al Carrito' : lang === 'CN' ? '加入购物车' : 'Add to Cart'}
                 </button>
+
+                {detailProduct.compatibleModels && detailProduct.compatibleModels.length > 0 && !detailSelectedModel && (
+                  <p className="text-xs text-orange-500 mt-2 text-center">
+                    {lang === 'ES' ? 'Por favor selecciona un modelo' : lang === 'CN' ? '请先选择型号' : 'Please select a model first'}
+                  </p>
+                )}
              </div>
           </div>
         </>

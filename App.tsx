@@ -1,49 +1,80 @@
 import React, { useState, useEffect } from 'react';
-import { ViewState, Product, Language, Employee, StockTransfer, RepairJob, InventoryItem, Order } from './types';
-import { MOCK_PRODUCTS, TRANSLATIONS, EMPLOYEES, MOCK_INVENTORY, MOCK_REPAIRS } from './constants';
+import { ViewState, Product, Language, Employee, RepairJob, InventoryItem, Order } from './types';
+import { MOCK_PRODUCTS, TRANSLATIONS, EMPLOYEES, MOCK_INVENTORY, MOCK_REPAIRS, HOT_BUNDLE } from './constants';
 import Hero3D from './components/Hero3D';
 import Storefront from './components/Storefront';
 import RepairLookup from './components/RepairLookup';
 import AIAssistant from './components/AIAssistant';
 import Dashboard from './components/Dashboard';
 import CustomCaseCreator from './components/CustomCaseCreator';
-import { ShoppingCart, User, Globe, X, Trash2, ShoppingBag, CheckCircle2, LogIn, CreditCard, Sparkles } from 'lucide-react';
+import AdminLogin from './components/AdminLogin';
+import ProductManager from './components/ProductManager';
+import { getProducts } from './services/productService';
+import { onAuthChange, AdminUser } from './services/authService';
+import { ShoppingCart, User, Globe, X, Trash2, ShoppingBag, CheckCircle2, LogIn, CreditCard, Sparkles, Menu, Plus, Minus, ArrowRight, ArrowLeft, Settings, Loader2 } from 'lucide-react';
+
+// Safe JSON parse helper
+const safeJsonParse = <T,>(str: string | null, fallback: T): T => {
+  if (!str) return fallback;
+  try {
+    return JSON.parse(str) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+// Cart item with quantity
+interface CartItem extends Product {
+  quantity: number;
+}
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewState>(ViewState.HOME);
-  const [cart, setCart] = useState<Product[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [lang, setLang] = useState<Language>('ES');
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [checkoutStep, setCheckoutStep] = useState<'none' | 'shipping' | 'payment' | 'success'>('none');
-  
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'shipping' | 'payment' | 'success'>('cart');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [repairSearchTerm, setRepairSearchTerm] = useState('');
+
+  // Customer Info State
+  const [customerInfo, setCustomerInfo] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: ''
+  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
   // Carousel State
   const [carouselIndex, setCarouselIndex] = useState(0);
 
   // Auth State
-  const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
-    const saved = localStorage.getItem('current_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [currentUser, setCurrentUser] = useState<Employee | null>(() =>
+    safeJsonParse(localStorage.getItem('current_user'), null)
+  );
   const [loginPin, setLoginPin] = useState('');
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   // Order State
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('shop_orders');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [orders, setOrders] = useState<Order[]>(() =>
+    safeJsonParse(localStorage.getItem('shop_orders'), [])
+  );
 
   // Global Data State
-  const [inventory, setInventory] = useState<InventoryItem[]>(() => {
-    const saved = localStorage.getItem('inventory');
-    return saved ? JSON.parse(saved) : MOCK_INVENTORY;
-  });
+  const [inventory, setInventory] = useState<InventoryItem[]>(() =>
+    safeJsonParse(localStorage.getItem('inventory'), MOCK_INVENTORY)
+  );
 
-  const [repairs, setRepairs] = useState<RepairJob[]>(() => {
-    const saved = localStorage.getItem('repairs');
-    return saved ? JSON.parse(saved) : MOCK_REPAIRS;
-  });
+  const [repairs, setRepairs] = useState<RepairJob[]>(() =>
+    safeJsonParse(localStorage.getItem('repairs'), MOCK_REPAIRS)
+  );
+
+  // Firebase Admin State
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
   // 5-second Carousel Timer
   useEffect(() => {
@@ -52,6 +83,55 @@ const App: React.FC = () => {
     }, 5000);
     return () => clearInterval(timer);
   }, []);
+
+  // Load products from Firestore
+  useEffect(() => {
+    const loadProducts = async () => {
+      setIsLoadingProducts(true);
+      try {
+        const firestoreProducts = await getProducts();
+        if (firestoreProducts.length > 0) {
+          setProducts(firestoreProducts);
+        } else {
+          // Fallback to mock products if Firestore is empty
+          setProducts([HOT_BUNDLE, ...MOCK_PRODUCTS]);
+        }
+      } catch (error) {
+        console.warn('Could not load products from Firestore, using mock data:', error);
+        setProducts([HOT_BUNDLE, ...MOCK_PRODUCTS]);
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    };
+
+    loadProducts();
+  }, []);
+
+  // Listen for admin auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthChange((user) => {
+      setAdminUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Reload products when returning from admin panel
+  const handleAdminLogout = () => {
+    setAdminUser(null);
+    setView(ViewState.HOME);
+    // Reload products to reflect any changes
+    const loadProducts = async () => {
+      try {
+        const firestoreProducts = await getProducts();
+        if (firestoreProducts.length > 0) {
+          setProducts(firestoreProducts);
+        }
+      } catch (error) {
+        console.warn('Could not reload products:', error);
+      }
+    };
+    loadProducts();
+  };
 
   useEffect(() => {
     localStorage.setItem('shop_orders', JSON.stringify(orders));
@@ -66,12 +146,42 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   const addToCart = (product: Product) => {
-    setCart(prev => [...prev, product]);
+    setCart(prev => {
+      // For custom products, always add as new item
+      if (product.isCustom) {
+        return [...prev, { ...product, quantity: 1 }];
+      }
+      // Check if product already exists in cart
+      const existingIndex = prev.findIndex(item =>
+        item.id === product.id && item.selectedModel === product.selectedModel
+      );
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: updated[existingIndex].quantity + 1
+        };
+        return updated;
+      }
+      return [...prev, { ...product, quantity: 1 }];
+    });
     setIsCartOpen(true);
   };
 
   const removeFromCart = (index: number) => {
     setCart(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateCartQuantity = (index: number, delta: number) => {
+    setCart(prev => {
+      const updated = [...prev];
+      const newQty = updated[index].quantity + delta;
+      if (newQty <= 0) {
+        return prev.filter((_, i) => i !== index);
+      }
+      updated[index] = { ...updated[index], quantity: newQty };
+      return updated;
+    });
   };
 
   const handleLogin = () => {
@@ -86,18 +196,47 @@ const App: React.FC = () => {
     }
   };
 
-  const cartTotal = cart.reduce((acc, p) => acc + p.price, 0);
+  const cartTotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
+  const cartItemCount = cart.reduce((acc, p) => acc + p.quantity, 0);
+
+  const validateCustomerInfo = () => {
+    const errors: Record<string, string> = {};
+    if (!customerInfo.name.trim()) errors.name = 'El nombre es requerido';
+    if (!customerInfo.email.trim()) {
+      errors.email = 'El email es requerido';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerInfo.email)) {
+      errors.email = 'Email inválido';
+    }
+    if (!customerInfo.phone.trim()) errors.phone = 'El teléfono es requerido';
+    if (!customerInfo.address.trim()) errors.address = 'La dirección es requerida';
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleProceedToPayment = () => {
+    if (validateCustomerInfo()) {
+      setCheckoutStep('payment');
+    }
+  };
 
   const handlePlaceOrder = (paymentMethod: 'Stripe' | 'PayPal') => {
+    // Expand cart items with quantities for order storage
+    const expandedItems: Product[] = cart.flatMap(item =>
+      Array(item.quantity).fill(null).map(() => ({
+        ...item,
+        quantity: undefined
+      } as Product))
+    );
+
     const newOrder: Order = {
       id: `ORD-${Math.floor(100000 + Math.random() * 900000)}`,
-      customerName: "Cliente Web",
-      email: "cliente@technova.es",
-      phone: "600 000 000",
-      address: "Calle Tech, 123, Madrid",
-      items: [...cart],
+      customerName: customerInfo.name,
+      email: customerInfo.email,
+      phone: customerInfo.phone,
+      address: customerInfo.address,
+      items: expandedItems,
       total: cartTotal,
-      status: 'Paid',
+      status: 'Pending', // Changed from 'Paid' - real payment would update this
       paymentMethod,
       date: new Date().toISOString()
     };
@@ -106,6 +245,7 @@ const App: React.FC = () => {
     setOrders(updatedOrders);
     localStorage.setItem('shop_orders', JSON.stringify(updatedOrders));
     setCart([]);
+    setCustomerInfo({ name: '', email: '', phone: '', address: '' });
     setCheckoutStep('success');
   };
 
@@ -149,17 +289,33 @@ const App: React.FC = () => {
                 )}
               </div>
 
-              <div className="relative cursor-pointer group p-2" onClick={() => setIsCartOpen(true)}>
+              <div className="relative cursor-pointer group p-2" onClick={() => { setIsCartOpen(true); setCheckoutStep('cart'); }}>
                 <ShoppingCart size={22} className="group-hover:text-brand-pink transition-colors" />
-                {cart.length > 0 && (
+                {cartItemCount > 0 && (
                   <span className="absolute top-0 right-0 bg-brand-pink text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-bounce">
-                    {cart.length}
+                    {cartItemCount}
                   </span>
                 )}
               </div>
 
-              <button 
-                className={`transition-colors p-1 md:p-0 ${currentUser ? 'text-brand-pink' : 'hover:text-brand-pink text-brand-dark'}`} 
+              {/* Mobile Menu Button */}
+              <button className="md:hidden p-2" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+                <Menu size={22} />
+              </button>
+
+              {/* Admin Panel Button - Only visible when logged in as Firebase admin */}
+              {adminUser && (
+                <button
+                  onClick={() => { setView(ViewState.ADMIN); window.scrollTo(0,0); }}
+                  className={`p-2 transition-colors ${view === ViewState.ADMIN ? 'text-brand-pink' : 'text-brand-dark hover:text-brand-pink'}`}
+                  title="Admin Panel"
+                >
+                  <Settings size={22} />
+                </button>
+              )}
+
+              <button
+                className={`transition-colors p-1 md:p-0 ${currentUser ? 'text-brand-pink' : 'hover:text-brand-pink text-brand-dark'}`}
                 onClick={() => {
                   if (currentUser) {
                     setView(ViewState.EMPLOYEE_DASHBOARD);
@@ -214,32 +370,75 @@ const App: React.FC = () => {
         </>
       )}
 
+      {/* Mobile Menu */}
+      {isMobileMenuOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm animate-in fade-in" onClick={() => setIsMobileMenuOpen(false)} />
+          <div className="fixed left-0 top-0 h-full w-64 bg-white z-[70] shadow-2xl flex flex-col animate-in slide-in-from-left duration-300">
+            <div className="p-6 border-b flex justify-between items-center">
+              <span className="text-xl font-bold text-brand-dark">Menu</span>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="p-2"><X size={24} /></button>
+            </div>
+            <div className="flex-1 p-4 space-y-2">
+              <button onClick={() => { setView(ViewState.HOME); setIsMobileMenuOpen(false); }} className="w-full text-left p-4 rounded-xl hover:bg-gray-50 font-bold text-brand-dark">
+                {TRANSLATIONS[lang].navShop}
+              </button>
+              <button onClick={() => { setView(ViewState.REPAIR_LOOKUP); setIsMobileMenuOpen(false); }} className="w-full text-left p-4 rounded-xl hover:bg-gray-50 font-bold text-brand-dark">
+                {TRANSLATIONS[lang].navTrack}
+              </button>
+              <button onClick={() => { setView(ViewState.CUSTOM_CASE); setIsMobileMenuOpen(false); }} className="w-full text-left p-4 rounded-xl hover:bg-gray-50 font-bold text-brand-dark flex items-center gap-2">
+                <Sparkles size={16} /> DISEÑO AI
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Cart Drawer */}
       {isCartOpen && (
         <>
-          <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm animate-in fade-in" onClick={() => { setIsCartOpen(false); setCheckoutStep('none'); }} />
+          <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm animate-in fade-in" onClick={() => { setIsCartOpen(false); setCheckoutStep('cart'); }} />
           <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-[70] shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+            {/* Header */}
             <div className="p-6 border-b flex justify-between items-center bg-gray-50">
                <h3 className="text-xl font-bold flex items-center gap-2 text-brand-dark">
-                  <ShoppingBag size={24} className="text-brand-pink" /> 
-                  {checkoutStep === 'success' ? 'Orden Exitosa' : 'Tu Carrito'}
+                  <ShoppingBag size={24} className="text-brand-pink" />
+                  {checkoutStep === 'cart' && 'Tu Carrito'}
+                  {checkoutStep === 'shipping' && 'Datos de Envío'}
+                  {checkoutStep === 'payment' && 'Método de Pago'}
+                  {checkoutStep === 'success' && 'Orden Exitosa'}
                </h3>
-               <button onClick={() => { setIsCartOpen(false); setCheckoutStep('none'); }} className="p-2 hover:bg-gray-200 rounded-full">
+               <button onClick={() => { setIsCartOpen(false); setCheckoutStep('cart'); }} className="p-2 hover:bg-gray-200 rounded-full">
                   <X size={24} />
                </button>
             </div>
-            
+
+            {/* Progress Steps */}
+            {checkoutStep !== 'success' && cart.length > 0 && (
+              <div className="px-6 py-3 border-b bg-gray-50 flex items-center justify-center gap-2 text-xs">
+                <span className={`px-3 py-1 rounded-full ${checkoutStep === 'cart' ? 'bg-brand-pink text-white' : 'bg-gray-200 text-gray-500'}`}>1. Carrito</span>
+                <ArrowRight size={14} className="text-gray-300" />
+                <span className={`px-3 py-1 rounded-full ${checkoutStep === 'shipping' ? 'bg-brand-pink text-white' : 'bg-gray-200 text-gray-500'}`}>2. Envío</span>
+                <ArrowRight size={14} className="text-gray-300" />
+                <span className={`px-3 py-1 rounded-full ${checkoutStep === 'payment' ? 'bg-brand-pink text-white' : 'bg-gray-200 text-gray-500'}`}>3. Pago</span>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto p-6">
-              {checkoutStep === 'success' ? (
+              {/* Success State */}
+              {checkoutStep === 'success' && (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
                   <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
                      <CheckCircle2 size={48} />
                   </div>
                   <h4 className="text-2xl font-black text-brand-dark">¡Gracias por tu compra!</h4>
-                  <p className="text-gray-500 text-sm">Tu pedido ha sido procesado. El equipo de TechNova lo gestionará de inmediato.</p>
-                  <button onClick={() => { setIsCartOpen(false); setCheckoutStep('none'); }} className="w-full bg-brand-dark text-white py-4 rounded-xl font-bold">Volver</button>
+                  <p className="text-gray-500 text-sm">Tu pedido ha sido registrado. Te contactaremos para confirmar el pago y envío.</p>
+                  <button onClick={() => { setIsCartOpen(false); setCheckoutStep('cart'); }} className="w-full bg-brand-dark text-white py-4 rounded-xl font-bold">Volver a la Tienda</button>
                 </div>
-              ) : (
+              )}
+
+              {/* Cart Items */}
+              {checkoutStep === 'cart' && (
                 <div className="space-y-4">
                    {cart.length === 0 ? (
                      <div className="py-20 text-center opacity-40">El carrito está vacío</div>
@@ -250,28 +449,139 @@ const App: React.FC = () => {
                           <div className="flex-1">
                              <div className="text-sm font-bold text-brand-dark">{item.name}</div>
                              {item.selectedModel && <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{item.selectedModel}</div>}
-                             <div className="text-brand-pink font-bold">€{item.price.toFixed(2)}</div>
+                             <div className="text-brand-pink font-bold">€{(item.price * item.quantity).toFixed(2)}</div>
+                             {/* Quantity Controls */}
+                             <div className="flex items-center gap-2 mt-2">
+                               <button onClick={() => updateCartQuantity(idx, -1)} className="w-7 h-7 rounded-full border flex items-center justify-center hover:bg-gray-200">
+                                 <Minus size={14} />
+                               </button>
+                               <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
+                               <button onClick={() => updateCartQuantity(idx, 1)} className="w-7 h-7 rounded-full border flex items-center justify-center hover:bg-gray-200">
+                                 <Plus size={14} />
+                               </button>
+                             </div>
                           </div>
-                          <button onClick={() => removeFromCart(idx)}><Trash2 size={16} className="text-gray-300"/></button>
+                          <button onClick={() => removeFromCart(idx)} className="self-start"><Trash2 size={16} className="text-gray-300 hover:text-red-400"/></button>
                        </div>
                      ))
                    )}
                 </div>
               )}
+
+              {/* Shipping Form */}
+              {checkoutStep === 'shipping' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Nombre Completo *</label>
+                    <input
+                      type="text"
+                      value={customerInfo.name}
+                      onChange={e => setCustomerInfo(prev => ({ ...prev, name: e.target.value }))}
+                      className={`w-full mt-1 p-3 border rounded-xl focus:ring-2 focus:ring-brand-pink outline-none ${formErrors.name ? 'border-red-400' : 'border-gray-200'}`}
+                      placeholder="Juan García"
+                    />
+                    {formErrors.name && <p className="text-red-500 text-xs mt-1">{formErrors.name}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Email *</label>
+                    <input
+                      type="email"
+                      value={customerInfo.email}
+                      onChange={e => setCustomerInfo(prev => ({ ...prev, email: e.target.value }))}
+                      className={`w-full mt-1 p-3 border rounded-xl focus:ring-2 focus:ring-brand-pink outline-none ${formErrors.email ? 'border-red-400' : 'border-gray-200'}`}
+                      placeholder="juan@email.com"
+                    />
+                    {formErrors.email && <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Teléfono *</label>
+                    <input
+                      type="tel"
+                      value={customerInfo.phone}
+                      onChange={e => setCustomerInfo(prev => ({ ...prev, phone: e.target.value }))}
+                      className={`w-full mt-1 p-3 border rounded-xl focus:ring-2 focus:ring-brand-pink outline-none ${formErrors.phone ? 'border-red-400' : 'border-gray-200'}`}
+                      placeholder="+34 600 123 456"
+                    />
+                    {formErrors.phone && <p className="text-red-500 text-xs mt-1">{formErrors.phone}</p>}
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Dirección de Envío *</label>
+                    <textarea
+                      value={customerInfo.address}
+                      onChange={e => setCustomerInfo(prev => ({ ...prev, address: e.target.value }))}
+                      className={`w-full mt-1 p-3 border rounded-xl focus:ring-2 focus:ring-brand-pink outline-none resize-none ${formErrors.address ? 'border-red-400' : 'border-gray-200'}`}
+                      placeholder="Calle, número, piso, código postal, ciudad"
+                      rows={3}
+                    />
+                    {formErrors.address && <p className="text-red-500 text-xs mt-1">{formErrors.address}</p>}
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Selection */}
+              {checkoutStep === 'payment' && (
+                <div className="space-y-4">
+                  <div className="bg-gray-50 p-4 rounded-xl border">
+                    <h4 className="font-bold text-sm text-brand-dark mb-2">Resumen del Pedido</h4>
+                    <p className="text-xs text-gray-500">{customerInfo.name}</p>
+                    <p className="text-xs text-gray-500">{customerInfo.email}</p>
+                    <p className="text-xs text-gray-500">{customerInfo.phone}</p>
+                    <p className="text-xs text-gray-500">{customerInfo.address}</p>
+                    <div className="mt-3 pt-3 border-t flex justify-between">
+                      <span className="font-bold">Total:</span>
+                      <span className="font-black text-brand-pink">€{cartTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 text-center">Selecciona tu método de pago preferido:</p>
+                  <button
+                    onClick={() => handlePlaceOrder('Stripe')}
+                    className="w-full bg-[#635bff] text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-[#5046e5] transition-colors"
+                  >
+                    <CreditCard size={20} /> Pagar con Stripe
+                  </button>
+                  <button
+                    onClick={() => handlePlaceOrder('PayPal')}
+                    className="w-full bg-[#0070ba] text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2 hover:bg-[#005ea6] transition-colors"
+                  >
+                    PayPal
+                  </button>
+                  <p className="text-[10px] text-gray-400 text-center">Nota: En esta demo el pedido se registra como "Pendiente". En producción se integraría con pasarelas de pago reales.</p>
+                </div>
+              )}
             </div>
 
-            {cart.length > 0 && checkoutStep !== 'success' && (
+            {/* Footer Actions */}
+            {cart.length > 0 && checkoutStep === 'cart' && (
               <div className="p-6 border-t">
                  <div className="flex justify-between items-center mb-4 text-xl font-black">
-                    <span>Total</span>
+                    <span>Total ({cartItemCount} items)</span>
                     <span>€{cartTotal.toFixed(2)}</span>
                  </div>
-                 <button 
-                   onClick={() => handlePlaceOrder('Stripe')}
-                   className="w-full bg-brand-pink text-white py-4 rounded-xl font-bold text-lg"
+                 <button
+                   onClick={() => setCheckoutStep('shipping')}
+                   className="w-full bg-brand-pink text-white py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-2"
                  >
-                   Pagar Ahora
+                   Continuar <ArrowRight size={20} />
                  </button>
+              </div>
+            )}
+
+            {checkoutStep === 'shipping' && (
+              <div className="p-6 border-t flex gap-3">
+                <button onClick={() => setCheckoutStep('cart')} className="flex-1 bg-gray-100 text-brand-dark py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                  <ArrowLeft size={20} /> Atrás
+                </button>
+                <button onClick={handleProceedToPayment} className="flex-1 bg-brand-pink text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                  Continuar <ArrowRight size={20} />
+                </button>
+              </div>
+            )}
+
+            {checkoutStep === 'payment' && (
+              <div className="p-6 border-t">
+                <button onClick={() => setCheckoutStep('shipping')} className="w-full bg-gray-100 text-brand-dark py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                  <ArrowLeft size={20} /> Volver a Envío
+                </button>
               </div>
             )}
           </div>
@@ -314,26 +624,43 @@ const App: React.FC = () => {
               </div>
             </div>
             
-            <Storefront 
-              products={MOCK_PRODUCTS} 
-              onAddToCart={addToCart} 
-              lang={lang} 
-              onTrackOrderClick={() => { setView(ViewState.REPAIR_LOOKUP); window.scrollTo(0,0); }} 
-              onStartCustomDesign={() => { setView(ViewState.CUSTOM_CASE); window.scrollTo(0,0); }}
-            />
+            {isLoadingProducts ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 size={32} className="animate-spin text-brand-pink" />
+              </div>
+            ) : (
+              <Storefront
+                products={products}
+                onAddToCart={addToCart}
+                lang={lang}
+                onTrackOrderClick={(searchTerm) => {
+                  if (searchTerm) setRepairSearchTerm(searchTerm);
+                  setView(ViewState.REPAIR_LOOKUP);
+                  window.scrollTo(0,0);
+                }}
+                onStartCustomDesign={() => { setView(ViewState.CUSTOM_CASE); window.scrollTo(0,0); }}
+              />
+            )}
           </>
         )}
 
-        {view === ViewState.REPAIR_LOOKUP && <RepairLookup onBrowseShop={() => { setView(ViewState.HOME); window.scrollTo(0,0); }} lang={lang} />}
+        {view === ViewState.REPAIR_LOOKUP && (
+          <RepairLookup
+            onBrowseShop={() => { setView(ViewState.HOME); window.scrollTo(0,0); }}
+            lang={lang}
+            initialSearchTerm={repairSearchTerm}
+            onClearSearch={() => setRepairSearchTerm('')}
+          />
+        )}
         {view === ViewState.CUSTOM_CASE && <CustomCaseCreator lang={lang} onAddToCart={addToCart} onBack={() => setView(ViewState.HOME)} />}
         
         {view === ViewState.EMPLOYEE_DASHBOARD && currentUser && (
-          <Dashboard 
-            lang={lang} 
-            inventory={inventory} setInventory={setInventory} 
+          <Dashboard
+            lang={lang}
+            inventory={inventory} setInventory={setInventory}
             repairs={repairs} setRepairs={setRepairs}
-            employees={EMPLOYEES} setEmployees={() => {}} 
-            currentUser={currentUser} 
+            employees={EMPLOYEES} setEmployees={() => {}}
+            currentUser={currentUser}
             onLogout={() => { setCurrentUser(null); setView(ViewState.HOME); }}
             onDeleteRepair={(id) => setRepairs(prev => prev.filter(r => r.id !== id))}
             onClockIn={() => {}} onUpdateSchedule={() => {}}
@@ -342,11 +669,27 @@ const App: React.FC = () => {
             commonProblems={['Pantalla', 'Batería', 'Carga', 'Agua']} setCommonProblems={() => {}}
           />
         )}
+
+        {/* Admin Panel Views */}
+        {view === ViewState.ADMIN && !adminUser && (
+          <AdminLogin
+            onLoginSuccess={() => {}}
+            onBack={() => setView(ViewState.HOME)}
+          />
+        )}
+
+        {view === ViewState.ADMIN && adminUser && (
+          <ProductManager
+            adminUser={adminUser}
+            onLogout={handleAdminLogout}
+            onBack={() => setView(ViewState.HOME)}
+          />
+        )}
       </main>
 
-      {view !== ViewState.EMPLOYEE_DASHBOARD && <AIAssistant />}
-      
-      {view !== ViewState.EMPLOYEE_DASHBOARD && (
+      {view !== ViewState.EMPLOYEE_DASHBOARD && view !== ViewState.ADMIN && <AIAssistant />}
+
+      {view !== ViewState.EMPLOYEE_DASHBOARD && view !== ViewState.ADMIN && (
         <footer className="bg-brand-dark text-white py-16 px-4 border-t border-slate-800">
            <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 text-center md:text-left">
               <div className="space-y-4">
@@ -370,6 +713,7 @@ const App: React.FC = () => {
                 <h4 className="font-bold mb-4 uppercase text-xs tracking-widest text-brand-pink">Portal</h4>
                 <ul className="text-sm text-gray-400 space-y-3">
                   <li className="hover:text-white cursor-pointer transition-colors" onClick={() => setIsLoginModalOpen(true)}>Staff Login</li>
+                  <li className="hover:text-white cursor-pointer transition-colors" onClick={() => { setView(ViewState.ADMIN); window.scrollTo(0,0); }}>Admin Panel</li>
                 </ul>
               </div>
            </div>
