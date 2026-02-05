@@ -89,6 +89,27 @@ export interface StockTransfer {
   fromStore: string;
   toStore: string;
   quantity: number;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'in_transit' | 'completed' | 'rejected';
   date: string;
+  sentBy?: string;
+  receivedBy?: string;
+  receivedDate?: string;
+  notes?: string;
+}
+
+export interface StoreConfig {
+  id: string;
+  name: string;
+  address: string;
+  isHQ: boolean;
+  manager?: string;
+}
+
+export interface TransferNotification {
+  id: string;
+  transferId: string;
+  toStore: string;
+  message: string;
+  read: boolean;
+  timestamp: string;
 }

@@ -1,16 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Package, Wrench, Clock, Users, BarChart3, Settings, 
-  LogOut, Plus, Search, RefreshCw, AlertTriangle, CheckCircle2,
-  TrendingUp, Activity, PieChart, AlertCircle, Download, CloudDownload,
-  ToggleLeft, ToggleRight, Shield, X, ShoppingBag, CreditCard, Printer, Eye,
-  Sparkles, DownloadCloud, Smartphone
+import {
+  Package, Wrench, Clock, BarChart3,
+  LogOut, Plus, Search, RefreshCw, CheckCircle2,
+  TrendingUp, AlertCircle, X, ShoppingBag, CreditCard, Printer,
+  Sparkles, DownloadCloud, Smartphone, Send, Bell, ArrowRight,
+  Building2, ChevronDown, Check, Truck, History, Filter,
+  DollarSign, Users, Calendar, PieChart, Activity
 } from 'lucide-react';
-import { InventoryItem, RepairJob, Language, Employee, StockTransfer, Order, Product } from '../types';
+import { InventoryItem, RepairJob, Language, Employee, StockTransfer, Order, StoreConfig, TransferNotification } from '../types';
 import KanbanBoard from './KanbanBoard';
 import AttendancePanel from './AttendancePanel';
 import SyncSettings from './SyncSettings';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart as RePie, Pie, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RePie, Pie, Cell, BarChart, Bar, Legend } from 'recharts';
+
+// Store configurations
+const STORES: StoreConfig[] = [
+  { id: 'porrino', name: 'TechNova Porriño', address: 'C/ Principal 123', isHQ: true, manager: 'Carlos' },
+  { id: 'vigo', name: 'TechNova Vigo', address: 'Gran Vía 45', isHQ: false, manager: 'María' },
+  { id: 'ourense', name: 'TechNova Ourense', address: 'Rúa do Paseo 78', isHQ: false, manager: 'Pedro' },
+];
 
 interface DashboardProps {
   lang: Language;
@@ -34,35 +42,189 @@ interface DashboardProps {
   setShowAttendance: (show: boolean) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ 
-  lang, inventory, setInventory, repairs, setRepairs, 
-  commonProblems, setCommonProblems, employees, setEmployees, 
+const Dashboard: React.FC<DashboardProps> = ({
+  lang, inventory, setInventory, repairs, setRepairs,
+  commonProblems, setCommonProblems, employees, setEmployees,
   currentUser, onLogout, onDeleteRepair, onClockIn, onUpdateSchedule,
-  transfers, onInitiateTransfer, onConfirmTransfer,
+  transfers: propTransfers, onInitiateTransfer, onConfirmTransfer,
   showAttendance, setShowAttendance
 }) => {
   const [activeTab, setActiveTab] = useState('kanban');
-  const [showSync, setShowSync] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [selectedCustomImage, setSelectedCustomImage] = useState<string | null>(null);
-  
+
+  // Transfer system state
+  const [transfers, setTransfers] = useState<StockTransfer[]>(() => {
+    const saved = localStorage.getItem('stock_transfers');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [notifications, setNotifications] = useState<TransferNotification[]>(() => {
+    const saved = localStorage.getItem('transfer_notifications');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [transferQty, setTransferQty] = useState(1);
+  const [transferTo, setTransferTo] = useState('');
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [transferHistory, setTransferHistory] = useState(false);
+
   // Shop Orders State
   const [shopOrders, setShopOrders] = useState<Order[]>(() => {
     const saved = localStorage.getItem('shop_orders');
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Role Helpers
   const isManager = currentUser.role === 'Manager' || currentUser.role === 'admin';
+  const currentStoreId = currentUser.store.toLowerCase();
+
+  // Pending notifications for current store
+  const pendingNotifications = notifications.filter(
+    n => n.toStore === currentStoreId && !n.read
+  );
+
+  // Pending transfers for current store
+  const pendingTransfers = transfers.filter(
+    t => t.toStore === currentStoreId && t.status === 'pending'
+  );
+
+  // Save transfers to localStorage
+  useEffect(() => {
+    localStorage.setItem('stock_transfers', JSON.stringify(transfers));
+  }, [transfers]);
+
+  useEffect(() => {
+    localStorage.setItem('transfer_notifications', JSON.stringify(notifications));
+  }, [notifications]);
 
   useEffect(() => {
     const handleStorage = () => {
       const saved = localStorage.getItem('shop_orders');
       if (saved) setShopOrders(JSON.parse(saved));
+      const savedTransfers = localStorage.getItem('stock_transfers');
+      if (savedTransfers) setTransfers(JSON.parse(savedTransfers));
+      const savedNotifs = localStorage.getItem('transfer_notifications');
+      if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
+
+  // Handle sending transfer
+  const handleSendTransfer = () => {
+    if (!selectedItem || !transferTo || transferQty < 1) return;
+
+    const currentStock = selectedItem.stores[currentStoreId] || 0;
+    if (transferQty > currentStock) {
+      alert('No hay suficiente stock disponible');
+      return;
+    }
+
+    const newTransfer: StockTransfer = {
+      id: `TR-${Date.now()}`,
+      itemId: selectedItem.id,
+      itemName: selectedItem.name,
+      fromStore: currentStoreId,
+      toStore: transferTo,
+      quantity: transferQty,
+      status: 'pending',
+      date: new Date().toISOString(),
+      sentBy: currentUser.name,
+    };
+
+    // Create notification
+    const newNotification: TransferNotification = {
+      id: `NTF-${Date.now()}`,
+      transferId: newTransfer.id,
+      toStore: transferTo,
+      message: `${currentUser.name} envía ${transferQty}x ${selectedItem.name} desde ${STORES.find(s => s.id === currentStoreId)?.name}`,
+      read: false,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Deduct from sender's inventory immediately
+    const updatedInventory = inventory.map(item => {
+      if (item.id === selectedItem.id) {
+        return {
+          ...item,
+          stores: {
+            ...item.stores,
+            [currentStoreId]: (item.stores[currentStoreId] || 0) - transferQty
+          }
+        };
+      }
+      return item;
+    });
+
+    setInventory(updatedInventory);
+    setTransfers([...transfers, newTransfer]);
+    setNotifications([...notifications, newNotification]);
+    setShowTransferModal(false);
+    setSelectedItem(null);
+    setTransferQty(1);
+    setTransferTo('');
+  };
+
+  // Handle accepting transfer
+  const handleAcceptTransfer = (transfer: StockTransfer) => {
+    // Update inventory - add to receiving store
+    const updatedInventory = inventory.map(item => {
+      if (item.id === transfer.itemId) {
+        return {
+          ...item,
+          stores: {
+            ...item.stores,
+            [transfer.toStore]: (item.stores[transfer.toStore] || 0) + transfer.quantity
+          }
+        };
+      }
+      return item;
+    });
+
+    // Update transfer status
+    const updatedTransfers = transfers.map(t =>
+      t.id === transfer.id
+        ? { ...t, status: 'completed' as const, receivedBy: currentUser.name, receivedDate: new Date().toISOString() }
+        : t
+    );
+
+    // Mark notification as read
+    const updatedNotifications = notifications.map(n =>
+      n.transferId === transfer.id ? { ...n, read: true } : n
+    );
+
+    setInventory(updatedInventory);
+    setTransfers(updatedTransfers);
+    setNotifications(updatedNotifications);
+  };
+
+  // Handle rejecting transfer
+  const handleRejectTransfer = (transfer: StockTransfer) => {
+    // Return items to sender
+    const updatedInventory = inventory.map(item => {
+      if (item.id === transfer.itemId) {
+        return {
+          ...item,
+          stores: {
+            ...item.stores,
+            [transfer.fromStore]: (item.stores[transfer.fromStore] || 0) + transfer.quantity
+          }
+        };
+      }
+      return item;
+    });
+
+    const updatedTransfers = transfers.map(t =>
+      t.id === transfer.id ? { ...t, status: 'rejected' as const } : t
+    );
+
+    const updatedNotifications = notifications.map(n =>
+      n.transferId === transfer.id ? { ...n, read: true } : n
+    );
+
+    setInventory(updatedInventory);
+    setTransfers(updatedTransfers);
+    setNotifications(updatedNotifications);
+  };
 
   const handlePrintOrder = (order: Order) => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
@@ -71,7 +233,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <tr>
           <td style="padding: 10px; border-bottom: 1px solid #eee;">
             ${item.name}
-            ${item.isCustom ? '<br/><span style="color:#6366f1; font-weight:bold; font-size:10px;">PROYECTO PERSONALIZADO</span>' : ''}
+            ${item.isCustom ? '<br/><span style="color:#6366f1; font-weight:bold; font-size:10px;">CUSTOM</span>' : ''}
             ${item.selectedModel ? `<br/><span style="font-size:10px;">Modelo: ${item.selectedModel}</span>` : ''}
           </td>
           <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">€${item.price.toFixed(2)}</td>
@@ -80,50 +242,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       printWindow.document.write(`
         <html>
-          <head>
-            <title>Recibo de Venta - ${order.id}</title>
-            <style>
-              body { font-family: 'Poppins', sans-serif; color: #1D3557; padding: 40px; }
-              .header { text-align: center; margin-bottom: 40px; }
-              .logo { font-size: 32px; font-weight: bold; color: #E63946; }
-              .details { margin-bottom: 30px; display: flex; justify-content: space-between; }
-              table { width: 100%; border-collapse: collapse; }
-              .total { font-size: 24px; font-weight: bold; text-align: right; margin-top: 20px; color: #E63946; }
-            </style>
+          <head><title>Recibo - ${order.id}</title>
+            <style>body{font-family:sans-serif;color:#1D3557;padding:40px;}.header{text-align:center;margin-bottom:40px;}.logo{font-size:32px;font-weight:bold;color:#E63946;}table{width:100%;border-collapse:collapse;}.total{font-size:24px;font-weight:bold;text-align:right;margin-top:20px;color:#E63946;}</style>
           </head>
           <body>
-            <div class="header">
-              <div class="logo">TechNova Ecosystem</div>
-              <div>Mobile Repair & Accessories</div>
-              <div style="margin-top: 10px;">ID Pedido: ${order.id}</div>
-            </div>
-            <div class="details">
-              <div>
-                <strong>Cliente:</strong><br/>
-                ${order.customerName}<br/>
-                ${order.phone}
-              </div>
-              <div style="text-align: right;">
-                <strong>Fecha:</strong><br/>
-                ${new Date(order.date).toLocaleString()}<br/>
-                <strong>Pago:</strong> ${order.paymentMethod}
-              </div>
-            </div>
-            <table>
-              <thead>
-                <tr style="background: #f1f1f1;">
-                  <th style="padding: 10px; text-align: left;">Producto</th>
-                  <th style="padding: 10px; text-align: right;">Precio</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemsHtml}
-              </tbody>
-            </table>
+            <div class="header"><div class="logo">TechNova</div><div>ID: ${order.id}</div></div>
+            <div style="margin-bottom:20px;"><strong>${order.customerName}</strong><br/>${order.phone}</div>
+            <table><thead><tr style="background:#f1f1f1;"><th style="padding:10px;text-align:left;">Producto</th><th style="padding:10px;text-align:right;">Precio</th></tr></thead><tbody>${itemsHtml}</tbody></table>
             <div class="total">Total: €${order.total.toFixed(2)}</div>
-            <div style="margin-top: 50px; text-align: center; font-size: 12px; color: #888;">
-              Gracias por su compra en TechNova.
-            </div>
           </body>
         </html>
       `);
@@ -147,231 +273,580 @@ const Dashboard: React.FC<DashboardProps> = ({
     { id: 'attendance', label: 'Fichaje', icon: Clock },
   ];
 
-  // Restricted tabs
   if (isManager) {
     tabs.splice(1, 0, { id: 'sales', label: 'Ventas', icon: ShoppingBag });
     tabs.push({ id: 'reports', label: 'Reportes', icon: BarChart3 });
-    tabs.push({ id: 'sync', label: 'Sincronización', icon: RefreshCw });
+    tabs.push({ id: 'sync', label: 'Sync', icon: RefreshCw });
   }
+
+  // Reports data
+  const repairsByStatus = [
+    { name: 'Recibido', value: repairs.filter(r => r.status === 'Received').length, color: '#64748b' },
+    { name: 'Diagnóstico', value: repairs.filter(r => r.status === 'Diagnosing').length, color: '#3b82f6' },
+    { name: 'Esperando', value: repairs.filter(r => r.status === 'Waiting for Parts').length, color: '#eab308' },
+    { name: 'Reparado', value: repairs.filter(r => r.status === 'Repaired').length, color: '#22c55e' },
+    { name: 'Listo', value: repairs.filter(r => r.status === 'Ready for Pickup').length, color: '#10b981' },
+    { name: 'Finalizado', value: repairs.filter(r => r.status === 'Finished' || r.status === 'Picked Up').length, color: '#6366f1' },
+  ];
+
+  const revenueData = [
+    { name: 'Lun', ventas: 420, reparaciones: 280 },
+    { name: 'Mar', ventas: 380, reparaciones: 320 },
+    { name: 'Mié', ventas: 510, reparaciones: 290 },
+    { name: 'Jue', ventas: 470, reparaciones: 350 },
+    { name: 'Vie', ventas: 620, reparaciones: 410 },
+    { name: 'Sáb', ventas: 780, reparaciones: 380 },
+    { name: 'Dom', ventas: 340, reparaciones: 150 },
+  ];
+
+  const totalRepairRevenue = repairs.filter(r => r.status === 'Finished' || r.status === 'Picked Up').reduce((a, b) => a + (b.price || 0), 0);
+  const totalSalesRevenue = shopOrders.reduce((a, b) => a + b.total, 0);
 
   return (
     <div className="flex h-[calc(100vh-64px)]">
       {/* Sidebar */}
-      <aside className="w-20 lg:w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
-        <div className="p-6 border-b border-slate-800 hidden lg:block">
-           <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white text-xs">
-                {currentUser.name.charAt(0)}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-white text-sm font-bold truncate">{currentUser.name}</span>
-                <span className="text-slate-500 text-[10px] uppercase font-black tracking-widest">{currentUser.role}</span>
-              </div>
-           </div>
+      <aside className="w-16 lg:w-60 bg-slate-900 border-r border-slate-800 flex flex-col">
+        <div className="p-4 border-b border-slate-800 hidden lg:block">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-bold text-white">
+              {currentUser.name.charAt(0)}
+            </div>
+            <div>
+              <div className="text-white font-semibold text-sm">{currentUser.name}</div>
+              <div className="text-slate-500 text-xs">{currentUser.store}</div>
+            </div>
+          </div>
         </div>
-        
-        <div className="flex-1 py-6 space-y-2">
+
+        <div className="flex-1 py-4">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-4 px-6 py-3 transition-all ${
-                activeTab === tab.id 
-                  ? 'bg-blue-600/10 text-blue-400 border-r-2 border-blue-500' 
+              className={`w-full flex items-center gap-3 px-4 py-3 transition-all ${
+                activeTab === tab.id
+                  ? 'bg-blue-600/20 text-blue-400 border-r-2 border-blue-500'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <tab.icon size={22} />
-              <span className="hidden lg:block font-medium">{tab.label}</span>
+              <tab.icon size={20} />
+              <span className="hidden lg:block text-sm font-medium">{tab.label}</span>
             </button>
           ))}
         </div>
-        
-        <div className="p-4 border-t border-slate-800">
-           <button onClick={onLogout} className="w-full bg-red-600/10 hover:bg-red-600/20 text-red-400 p-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
-             <LogOut size={18} />
-             <span className="hidden lg:inline text-xs font-bold">Log Out</span>
-           </button>
+
+        <div className="p-3 border-t border-slate-800">
+          <button onClick={onLogout} className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2.5 rounded-xl flex items-center justify-center gap-2">
+            <LogOut size={18} />
+            <span className="hidden lg:inline text-xs font-medium">Salir</span>
+          </button>
         </div>
       </aside>
 
       {/* Main Panel */}
-      <main className="flex-1 bg-slate-950 overflow-y-auto p-4 lg:p-8 relative">
-        {activeTab === 'kanban' && (
-          <KanbanBoard repairs={repairs} setRepairs={setRepairs} employees={employees} currentUser={currentUser} inventory={inventory} setInventory={setInventory} onDeleteRepair={onDeleteRepair} lang={lang} />
-        )}
+      <main className="flex-1 bg-slate-950 overflow-y-auto relative">
+        {/* Notification Bell */}
+        <div className="absolute top-4 right-4 z-50">
+          <button
+            onClick={() => setShowNotifications(!showNotifications)}
+            className="relative bg-slate-800 p-3 rounded-xl hover:bg-slate-700 transition-colors"
+          >
+            <Bell size={20} className="text-slate-400" />
+            {pendingNotifications.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold animate-pulse">
+                {pendingNotifications.length}
+              </span>
+            )}
+          </button>
 
-        {activeTab === 'attendance' && (
-          <AttendancePanel 
-            employees={employees} 
-            onClockIn={onClockIn} 
-            currentUser={currentUser} 
-            onUpdateSchedule={onUpdateSchedule} 
-          />
-        )}
-
-        {activeTab === 'sales' && isManager && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                <ShoppingBag className="text-brand-pink" /> Gestión de Pedidos Online
-              </h2>
-              <div className="flex gap-2">
-                 <div className="bg-slate-900 px-4 py-2 rounded-xl border border-slate-800 flex items-center gap-3">
-                   <span className="text-xs text-slate-500 uppercase font-bold">Total Ventas</span>
-                   <span className="text-white font-black text-lg">€{shopOrders.reduce((a,b)=>a+b.total,0).toFixed(2)}</span>
-                 </div>
+          {/* Notifications Dropdown */}
+          {showNotifications && (
+            <div className="absolute right-0 top-14 w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+              <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+                <h3 className="font-semibold text-white">Transferencias Entrantes</h3>
+                <button onClick={() => setShowNotifications(false)}>
+                  <X size={18} className="text-slate-400" />
+                </button>
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {pendingTransfers.length === 0 ? (
+                  <div className="p-6 text-center text-slate-500">
+                    <Package size={32} className="mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No hay transferencias pendientes</p>
+                  </div>
+                ) : (
+                  pendingTransfers.map(transfer => (
+                    <div key={transfer.id} className="p-4 border-b border-slate-800 hover:bg-slate-800/50">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <div className="text-white font-medium text-sm">{transfer.itemName}</div>
+                          <div className="text-xs text-slate-500">
+                            {transfer.quantity} unidades desde {STORES.find(s => s.id === transfer.fromStore)?.name}
+                          </div>
+                          <div className="text-xs text-slate-600 mt-1">
+                            Por: {transfer.sentBy} · {new Date(transfer.date).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => handleAcceptTransfer(transfer)}
+                          className="flex-1 bg-green-600 hover:bg-green-500 text-white py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1"
+                        >
+                          <Check size={14} /> Aceptar
+                        </button>
+                        <button
+                          onClick={() => handleRejectTransfer(transfer)}
+                          className="flex-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1"
+                        >
+                          <X size={14} /> Rechazar
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {shopOrders.length === 0 ? (
-                 <div className="col-span-full py-20 text-center bg-slate-900 rounded-2xl border border-slate-800 opacity-50">
-                   <ShoppingBag size={48} className="mx-auto mb-4" />
-                   <p className="text-white">No hay pedidos registrados aún.</p>
-                 </div>
-               ) : (
-                 shopOrders.map(order => (
-                   <div key={order.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors group relative overflow-hidden flex flex-col">
-                      <div className="flex justify-between items-start mb-4">
-                         <div>
-                            <span className="text-[10px] font-mono text-slate-500 bg-black px-2 py-1 rounded">{order.id}</span>
-                            <h3 className="text-white font-bold mt-2">{order.customerName || 'Cliente Web'}</h3>
-                         </div>
-                         <div className={`px-2 py-1 rounded-full text-[10px] font-bold ${order.status === 'Paid' ? 'bg-green-500/20 text-green-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                           {order.status}
-                         </div>
+          )}
+        </div>
+
+        <div className="p-6">
+          {activeTab === 'kanban' && (
+            <KanbanBoard repairs={repairs} setRepairs={setRepairs} employees={employees} currentUser={currentUser} inventory={inventory} setInventory={setInventory} onDeleteRepair={onDeleteRepair} lang={lang} />
+          )}
+
+          {activeTab === 'attendance' && (
+            <AttendancePanel employees={employees} onClockIn={onClockIn} currentUser={currentUser} onUpdateSchedule={onUpdateSchedule} />
+          )}
+
+          {activeTab === 'sales' && isManager && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <ShoppingBag className="text-brand-pink" /> Pedidos Online
+                </h2>
+                <div className="bg-slate-800 px-4 py-2 rounded-xl flex items-center gap-2">
+                  <DollarSign size={16} className="text-green-400" />
+                  <span className="text-white font-bold">€{totalSalesRevenue.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {shopOrders.length === 0 ? (
+                  <div className="col-span-full py-16 text-center bg-slate-900 rounded-2xl border border-slate-800">
+                    <ShoppingBag size={40} className="mx-auto mb-3 text-slate-700" />
+                    <p className="text-slate-500">Sin pedidos todavía</p>
+                  </div>
+                ) : (
+                  shopOrders.map(order => (
+                    <div key={order.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <span className="text-xs font-mono text-slate-600">{order.id}</span>
+                          <h3 className="text-white font-semibold">{order.customerName || 'Cliente'}</h3>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          order.status === 'Paid' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                        }`}>
+                          {order.status}
+                        </span>
                       </div>
-                      
-                      <div className="space-y-4 mb-4 flex-1">
-                        {order.items.map((item, i) => (
-                          <div key={i} className="bg-black/20 p-3 rounded-xl border border-white/5 space-y-2">
-                             <div className="text-xs text-slate-400 flex justify-between items-center">
-                                <span className="truncate max-w-[150px] font-bold flex items-center gap-2">
-                                  {item.isCustom && <Sparkles size={12} className="text-indigo-400"/>}
-                                  {item.name}
-                                </span>
-                                <span className="font-mono text-white">€{item.price.toFixed(2)}</span>
-                             </div>
-                             
-                             {item.isCustom && (
-                               <div className="flex items-center gap-4 mt-2">
-                                  <div 
-                                    onClick={() => setSelectedCustomImage(item.customImage || null)}
-                                    className="w-12 h-12 bg-slate-800 rounded-lg overflow-hidden cursor-zoom-in border border-white/10 hover:border-indigo-500 transition-colors"
-                                  >
-                                    <img src={item.image} className="w-full h-full object-cover" alt="Preview" />
-                                  </div>
-                                  <div className="flex-1">
-                                     <div className="text-[10px] text-slate-500 uppercase font-black">Modelo de Impresión</div>
-                                     <div className="text-xs text-indigo-400 font-bold flex items-center gap-1"><Smartphone size={10}/> {item.selectedModel}</div>
-                                     <button 
-                                       onClick={() => handleDownloadImage(item.customImage || '', `${order.id}-${item.selectedModel}`)}
-                                       className="text-[10px] text-white bg-indigo-600 px-2 py-1 rounded mt-1 hover:bg-indigo-500 flex items-center gap-1"
-                                     >
-                                       <DownloadCloud size={10} /> Descargar Original
-                                     </button>
-                                  </div>
-                               </div>
-                             )}
+
+                      <div className="space-y-2 mb-3">
+                        {order.items.slice(0, 2).map((item, i) => (
+                          <div key={i} className="flex justify-between text-sm">
+                            <span className="text-slate-400 truncate max-w-[150px]">{item.name}</span>
+                            <span className="text-white font-medium">€{item.price.toFixed(2)}</span>
                           </div>
                         ))}
+                        {order.items.length > 2 && (
+                          <div className="text-xs text-slate-500">+{order.items.length - 2} más</div>
+                        )}
                       </div>
 
-                      <div className="border-t border-slate-800 pt-4 flex justify-between items-end">
-                         <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-500 flex items-center gap-1"><CreditCard size={10}/> {order.paymentMethod}</span>
-                            <span className="text-xl font-black text-white">€{order.total.toFixed(2)}</span>
-                         </div>
-                         <button 
-                           onClick={() => handlePrintOrder(order)}
-                           className="bg-brand-pink text-white p-2.5 rounded-xl hover:scale-110 active:scale-90 transition-all shadow-lg shadow-brand-pink/20"
-                           title="Imprimir Recibo"
-                         >
-                            <Printer size={18} />
-                         </button>
+                      <div className="flex justify-between items-center pt-3 border-t border-slate-800">
+                        <span className="text-lg font-bold text-white">€{order.total.toFixed(2)}</span>
+                        <button onClick={() => handlePrintOrder(order)} className="bg-brand-pink text-white p-2 rounded-lg hover:bg-brand-pink/80">
+                          <Printer size={16} />
+                        </button>
                       </div>
-                   </div>
-                 ))
-               )}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Custom Image Modal */}
-        {selectedCustomImage && (
-          <>
-            <div className="fixed inset-0 bg-black/90 z-[100] backdrop-blur-xl animate-in fade-in" onClick={() => setSelectedCustomImage(null)} />
-            <div className="fixed inset-12 z-[110] flex items-center justify-center animate-in zoom-in-95" onClick={() => setSelectedCustomImage(null)}>
-               <img src={selectedCustomImage} className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl shadow-black" alt="Production HD" />
-               <button onClick={() => setSelectedCustomImage(null)} className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full"><X size={32}/></button>
-            </div>
-          </>
-        )}
+          {selectedCustomImage && (
+            <>
+              <div className="fixed inset-0 bg-black/90 z-[100]" onClick={() => setSelectedCustomImage(null)} />
+              <div className="fixed inset-12 z-[110] flex items-center justify-center">
+                <img src={selectedCustomImage} className="max-w-full max-h-full object-contain rounded-2xl" alt="HD" />
+                <button onClick={() => setSelectedCustomImage(null)} className="absolute top-4 right-4 bg-white/10 text-white p-3 rounded-full"><X size={24}/></button>
+              </div>
+            </>
+          )}
 
-        {activeTab === 'inventory' && (
-           <div className="space-y-6">
-             <div className="flex justify-between items-center">
-               <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                 <Package className="text-blue-500" /> Stock Local: {currentUser.store}
-               </h2>
-             </div>
-             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                <table className="w-full text-left">
-                  <thead className="bg-slate-800/50 text-slate-400 text-[10px] uppercase tracking-widest">
-                     <tr>
-                        <th className="p-4">Pieza</th>
-                        <th className="p-4">SKU</th>
-                        <th className="p-4 text-center">Stock</th>
-                     </tr>
+          {activeTab === 'inventory' && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Package className="text-blue-400" /> Inventario
+                  </h2>
+                  <p className="text-slate-500 text-sm">{STORES.find(s => s.id === currentStoreId)?.name}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setTransferHistory(!transferHistory)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 ${
+                      transferHistory ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <History size={16} /> Historial
+                  </button>
+                </div>
+              </div>
+
+              {/* Transfer History */}
+              {transferHistory && (
+                <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                  <div className="p-4 border-b border-slate-800">
+                    <h3 className="font-semibold text-white">Historial de Transferencias</h3>
+                  </div>
+                  <div className="divide-y divide-slate-800 max-h-64 overflow-y-auto">
+                    {transfers.filter(t => t.fromStore === currentStoreId || t.toStore === currentStoreId).length === 0 ? (
+                      <div className="p-6 text-center text-slate-500">Sin transferencias</div>
+                    ) : (
+                      transfers.filter(t => t.fromStore === currentStoreId || t.toStore === currentStoreId).reverse().slice(0, 10).map(t => (
+                        <div key={t.id} className="p-4 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                              t.fromStore === currentStoreId ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400'
+                            }`}>
+                              {t.fromStore === currentStoreId ? <Send size={14} /> : <Package size={14} />}
+                            </div>
+                            <div>
+                              <div className="text-white text-sm font-medium">{t.itemName}</div>
+                              <div className="text-xs text-slate-500">
+                                {t.fromStore === currentStoreId ? `→ ${STORES.find(s => s.id === t.toStore)?.name}` : `← ${STORES.find(s => s.id === t.fromStore)?.name}`}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-medium">{t.fromStore === currentStoreId ? '-' : '+'}{t.quantity}</div>
+                            <div className={`text-xs ${
+                              t.status === 'completed' ? 'text-green-400' : t.status === 'rejected' ? 'text-red-400' : 'text-yellow-400'
+                            }`}>
+                              {t.status === 'completed' ? 'Completado' : t.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Inventory Table */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-slate-800/50">
+                    <tr className="text-left text-xs text-slate-400 uppercase tracking-wider">
+                      <th className="p-4">Pieza</th>
+                      <th className="p-4">SKU</th>
+                      <th className="p-4 text-center">Stock</th>
+                      {isManager && <th className="p-4 text-center">Todas las Tiendas</th>}
+                      <th className="p-4 text-right">Acciones</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {inventory.map(item => (
-                       <tr key={item.id} className="hover:bg-white/5 transition-colors">
+                    {inventory.map(item => {
+                      const localStock = item.stores[currentStoreId] || 0;
+                      const totalStock = Object.values(item.stores).reduce((a: number, b: number) => a + b, 0);
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
                           <td className="p-4">
-                             <div className="text-white font-bold">{item.name}</div>
-                             <div className="text-[10px] text-slate-500">{item.id}</div>
+                            <div className="text-white font-medium">{item.name}</div>
                           </td>
-                          <td className="p-4 font-mono text-xs text-slate-400">{item.sku}</td>
+                          <td className="p-4">
+                            <span className="text-xs font-mono text-slate-500">{item.sku}</span>
+                          </td>
                           <td className="p-4 text-center">
-                             <span className={`px-3 py-1 rounded-full text-xs font-black ${item.stores[currentUser.store.toLowerCase()] > 5 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                {item.stores[currentUser.store.toLowerCase()] || 0}
-                             </span>
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                              localStock > 5 ? 'bg-green-500/20 text-green-400' :
+                              localStock > 0 ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>
+                              {localStock}
+                            </span>
                           </td>
-                       </tr>
-                    ))}
+                          {isManager && (
+                            <td className="p-4">
+                              <div className="flex items-center justify-center gap-2">
+                                {STORES.map(store => (
+                                  <div key={store.id} className="text-center">
+                                    <div className="text-xs text-slate-600">{store.name.split(' ')[1]}</div>
+                                    <div className={`text-sm font-medium ${
+                                      (item.stores[store.id] || 0) > 0 ? 'text-white' : 'text-slate-600'
+                                    }`}>
+                                      {item.stores[store.id] || 0}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          )}
+                          <td className="p-4 text-right">
+                            {localStock > 0 && (
+                              <button
+                                onClick={() => {
+                                  setSelectedItem(item);
+                                  setShowTransferModal(true);
+                                }}
+                                className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 ml-auto"
+                              >
+                                <Send size={12} /> Enviar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-             </div>
-           </div>
-        )}
+              </div>
+            </div>
+          )}
 
-        {activeTab === 'reports' && isManager && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-                   <h3 className="text-slate-500 font-bold mb-1 uppercase text-[10px] tracking-widest">Ingresos Totales</h3>
-                   <div className="text-4xl font-black text-white">€{(shopOrders.reduce((a,b)=>a+b.total,0) + repairs.filter(r => r.status === 'Finished' || r.status === 'Picked Up').reduce((a,b)=>a+(b.price||0),0)).toFixed(2)}</div>
-                </div>
-                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-                   <h3 className="text-slate-500 font-bold mb-1 uppercase text-[10px] tracking-widest">Reparaciones Hoy</h3>
-                   <div className="text-4xl font-black text-blue-500">{repairs.length}</div>
-                </div>
-                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-                   <h3 className="text-slate-500 font-bold mb-1 uppercase text-[10px] tracking-widest">Pedidos Tienda</h3>
-                   <div className="text-4xl font-black text-brand-pink">{shopOrders.length}</div>
-                </div>
-             </div>
-             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 h-[300px] flex items-center justify-center">
-                <p className="text-slate-500 text-sm italic font-medium">Gráficos de rendimiento en tiempo real...</p>
-             </div>
-          </div>
-        )}
+          {activeTab === 'reports' && isManager && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <BarChart3 className="text-indigo-400" /> Panel de Reportes
+              </h2>
 
-        {activeTab === 'sync' && isManager && (
-           <SyncSettings onSync={async (url) => { console.log("Sync requested to:", url); return true; }} />
-        )}
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-green-600/20 to-emerald-600/10 border border-green-500/20 rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-green-400 mb-2">
+                    <DollarSign size={18} />
+                    <span className="text-xs font-medium uppercase">Ingresos Totales</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white">€{(totalSalesRevenue + totalRepairRevenue).toFixed(0)}</div>
+                  <div className="text-xs text-green-400 mt-1">+12% vs semana anterior</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border border-blue-500/20 rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-blue-400 mb-2">
+                    <Wrench size={18} />
+                    <span className="text-xs font-medium uppercase">Reparaciones</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white">{repairs.length}</div>
+                  <div className="text-xs text-blue-400 mt-1">{repairs.filter(r => r.status === 'Finished').length} completadas</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-pink-600/20 to-rose-600/10 border border-pink-500/20 rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-pink-400 mb-2">
+                    <ShoppingBag size={18} />
+                    <span className="text-xs font-medium uppercase">Ventas Online</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white">{shopOrders.length}</div>
+                  <div className="text-xs text-pink-400 mt-1">€{totalSalesRevenue.toFixed(0)} total</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-600/20 to-violet-600/10 border border-purple-500/20 rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-purple-400 mb-2">
+                    <TrendingUp size={18} />
+                    <span className="text-xs font-medium uppercase">Ticket Medio</span>
+                  </div>
+                  <div className="text-2xl font-bold text-white">
+                    €{shopOrders.length > 0 ? (totalSalesRevenue / shopOrders.length).toFixed(0) : 0}
+                  </div>
+                  <div className="text-xs text-purple-400 mt-1">Por pedido</div>
+                </div>
+              </div>
+
+              {/* Charts Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Revenue Chart */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                  <h3 className="text-white font-semibold mb-4">Ingresos Semanales</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={revenueData}>
+                        <defs>
+                          <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ec4899" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorReparaciones" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
+                        <YAxis stroke="#64748b" fontSize={12} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                          labelStyle={{ color: '#fff' }}
+                        />
+                        <Area type="monotone" dataKey="ventas" stroke="#ec4899" fillOpacity={1} fill="url(#colorVentas)" name="Ventas" />
+                        <Area type="monotone" dataKey="reparaciones" stroke="#3b82f6" fillOpacity={1} fill="url(#colorReparaciones)" name="Reparaciones" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Repairs by Status */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                  <h3 className="text-white font-semibold mb-4">Estado de Reparaciones</h3>
+                  <div className="h-64 flex items-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RePie>
+                        <Pie
+                          data={repairsByStatus.filter(d => d.value > 0)}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {repairsByStatus.filter(d => d.value > 0).map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                        />
+                      </RePie>
+                    </ResponsiveContainer>
+                    <div className="space-y-2 min-w-[120px]">
+                      {repairsByStatus.filter(d => d.value > 0).map((item, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span className="text-slate-400">{item.name}</span>
+                          <span className="text-white font-medium ml-auto">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Repairs Table */}
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="p-4 border-b border-slate-800">
+                  <h3 className="text-white font-semibold">Reparaciones Recientes</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-800/50 text-xs text-slate-400 uppercase">
+                      <tr>
+                        <th className="p-3 text-left">ID</th>
+                        <th className="p-3 text-left">Cliente</th>
+                        <th className="p-3 text-left">Dispositivo</th>
+                        <th className="p-3 text-left">Problema</th>
+                        <th className="p-3 text-center">Estado</th>
+                        <th className="p-3 text-right">Precio</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {repairs.slice(0, 5).map(repair => (
+                        <tr key={repair.id} className="hover:bg-slate-800/30">
+                          <td className="p-3 text-xs font-mono text-slate-500">{repair.id}</td>
+                          <td className="p-3 text-white text-sm">{repair.customerName}</td>
+                          <td className="p-3 text-slate-400 text-sm">{repair.device}</td>
+                          <td className="p-3 text-slate-400 text-sm truncate max-w-[150px]">{repair.issue}</td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              repair.status === 'Finished' ? 'bg-green-500/20 text-green-400' :
+                              repair.status === 'Ready for Pickup' ? 'bg-emerald-500/20 text-emerald-400' :
+                              repair.status === 'Repaired' ? 'bg-blue-500/20 text-blue-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>
+                              {repair.status}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right text-white font-medium">
+                            {repair.price ? `€${repair.price}` : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'sync' && isManager && (
+            <SyncSettings onSync={async (url) => { console.log("Sync:", url); return true; }} />
+          )}
+        </div>
       </main>
+
+      {/* Transfer Modal */}
+      {showTransferModal && selectedItem && (
+        <>
+          <div className="fixed inset-0 bg-black/70 z-[100]" onClick={() => setShowTransferModal(false)} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl z-[110] p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Send size={20} className="text-blue-400" /> Enviar Stock
+              </h3>
+              <button onClick={() => setShowTransferModal(false)}>
+                <X size={20} className="text-slate-400" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-slate-800 rounded-xl p-4">
+                <div className="text-sm text-slate-400 mb-1">Pieza seleccionada</div>
+                <div className="text-white font-semibold">{selectedItem.name}</div>
+                <div className="text-xs text-slate-500 mt-1">
+                  Stock disponible: {selectedItem.stores[currentStoreId] || 0} unidades
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm text-slate-400 block mb-2">Cantidad a enviar</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={selectedItem.stores[currentStoreId] || 1}
+                  value={transferQty}
+                  onChange={e => setTransferQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm text-slate-400 block mb-2">Enviar a tienda</label>
+                <select
+                  value={transferTo}
+                  onChange={e => setTransferTo(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="">Seleccionar tienda...</option>
+                  {STORES.filter(s => s.id !== currentStoreId).map(store => (
+                    <option key={store.id} value={store.id}>{store.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={handleSendTransfer}
+                disabled={!transferTo || transferQty < 1}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <Truck size={18} /> Confirmar Envío
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

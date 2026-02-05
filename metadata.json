@@ -1,7 +1,0 @@
-{
-  "name": "TechNova Ecosystem",
-  "description": "A comprehensive mobile chain store platform combining e-commerce, 3D interactivity, customer repair tracking, and internal employee inventory management.",
-  "requestFramePermissions": [
-    "microphone"
-  ]
-}

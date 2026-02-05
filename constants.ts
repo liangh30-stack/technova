@@ -333,7 +333,7 @@ export const EMPLOYEES: Employee[] = [
     id: "EMP-ADMIN",
     name: "Super Admin",
     role: "admin",
-    pin: "0000",
+    pin: process.env.PIN_ADMIN || "0000",
     store: "HQ",
     attendanceHistory: [],
     permissions: { canViewReports: true }
@@ -342,7 +342,7 @@ export const EMPLOYEES: Employee[] = [
     id: "EMP-MANAGER",
     name: "主管 (Manager)",
     role: "Manager",
-    pin: "1234",
+    pin: process.env.PIN_MANAGER || "1234",
     store: "Mall",
     attendanceHistory: [],
     permissions: { canViewReports: true }
@@ -351,7 +351,7 @@ export const EMPLOYEES: Employee[] = [
     id: "EMP-WORKER",
     name: "工人 (Worker)",
     role: "Technician",
-    pin: "8888",
+    pin: process.env.PIN_WORKER || "8888",
     store: "Downtown",
     attendanceHistory: [],
     permissions: { canViewReports: false }
