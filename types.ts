@@ -3,7 +3,12 @@ export enum ViewState {
   REPAIR_LOOKUP = 'REPAIR_LOOKUP',
   EMPLOYEE_DASHBOARD = 'EMPLOYEE_DASHBOARD',
   CUSTOM_CASE = 'CUSTOM_CASE',
-  ADMIN = 'ADMIN'
+  ADMIN = 'ADMIN',
+  CUSTOMER_ACCOUNT = 'CUSTOMER_ACCOUNT',
+  LEGAL_PRIVACY = 'LEGAL_PRIVACY',
+  LEGAL_TERMS = 'LEGAL_TERMS',
+  LEGAL_NOTICE = 'LEGAL_NOTICE',
+  LEGAL_COOKIES = 'LEGAL_COOKIES'
 }
 
 export type Language = 'EN' | 'CN' | 'ES' | 'FR' | 'DE';
@@ -37,6 +42,13 @@ export interface Order {
   date: string;
 }
 
+export type PartType = 'original' | 'compatible';
+
+export interface RepairPart {
+  name: string;
+  type: PartType;
+}
+
 export interface RepairJob {
   id: string;
   customerName: string;
@@ -51,6 +63,9 @@ export interface RepairJob {
   publico?: boolean;
   telefono?: string;
   fechaEntrada?: string;
+  brand?: string;
+  model?: string;
+  parts?: RepairPart[];
 }
 
 export interface InventoryItem {
@@ -112,4 +127,51 @@ export interface TransferNotification {
   message: string;
   read: boolean;
   timestamp: string;
+}
+
+// Customer profile stored in Firestore customers/{uid}
+export interface Customer {
+  uid: string;
+  email: string;
+  displayName: string;
+  phone?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Stored in Firestore customers/{uid}/addresses/{addressId}
+export interface CustomerAddress {
+  id: string;
+  label: string;
+  fullName: string;
+  street: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  phone: string;
+  isDefault: boolean;
+}
+
+// Extends Order with customer linkage
+export interface CustomerOrder extends Order {
+  customerId: string;
+  shippingAddressId?: string;
+}
+
+// Cart item for Firestore persistence
+export interface FirestoreCartItem {
+  productId: string | number;
+  name: string;
+  price: number;
+  image: string;
+  quantity: number;
+  selectedModel?: string;
+  isCustom?: boolean;
+  addedAt: string;
+}
+
+// Favorites
+export interface CustomerFavorite {
+  productId: string | number;
+  addedAt: string;
 }

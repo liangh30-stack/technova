@@ -5,14 +5,16 @@ import { ViewState } from '../types';
 interface SiteFooterProps {
   onOpenLogin: () => void;
   setView: (view: ViewState) => void;
+  customer: boolean;
+  onCustomerAccountClick: () => void;
 }
 
-const SiteFooter: React.FC<SiteFooterProps> = ({ onOpenLogin, setView }) => {
+const SiteFooter: React.FC<SiteFooterProps> = ({ onOpenLogin, setView, customer, onCustomerAccountClick }) => {
   const { t } = useTranslation();
 
   return (
     <footer className="bg-brand-dark text-white py-16 px-4 border-t border-[#333333]" aria-label="Site footer">
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 text-center md:text-left">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-12 text-center md:text-left">
         <div className="space-y-4">
           <h3 className="text-3xl font-bold tracking-tight">TechNova</h3>
           <p className="text-gray-400 text-sm font-light">{t('footerDescription') || 'Professional Mobile Repair & Premium Accessories. Redefining your tech experience since 2018.'}</p>
@@ -25,6 +27,14 @@ const SiteFooter: React.FC<SiteFooterProps> = ({ onOpenLogin, setView }) => {
             </li>
             <li>
               <button className="hover:text-white transition-colors text-left" onClick={() => { setView(ViewState.REPAIR_LOOKUP); window.scrollTo(0,0); }}>{t('footerTrackOrder') || 'Track Order'}</button>
+            </li>
+            <li>
+              <button
+                className="hover:text-white transition-colors text-left"
+                onClick={() => { customer ? onCustomerAccountClick() : onOpenLogin(); window.scrollTo(0,0); }}
+              >
+                {t('customerMyAccount') || 'My Account'}
+              </button>
             </li>
           </ul>
         </div>
@@ -41,6 +51,26 @@ const SiteFooter: React.FC<SiteFooterProps> = ({ onOpenLogin, setView }) => {
           <ul className="text-sm text-gray-400 space-y-3">
             <li>
               <button className="hover:text-white transition-colors text-left" onClick={onOpenLogin}>{t('footerStaffLogin') || 'Staff Login'}</button>
+            </li>
+            <li>
+              <button className="hover:text-white transition-colors text-left" onClick={() => { setView(ViewState.ADMIN); window.scrollTo(0,0); }}>{t('footerAdminPanel') || 'Admin Panel'}</button>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <h4 className="font-bold mb-4 uppercase text-xs tracking-widest text-brand-text-tertiary">{t('footerLegal') || 'Legal'}</h4>
+          <ul className="text-sm text-gray-400 space-y-3">
+            <li>
+              <button className="hover:text-white transition-colors text-left" onClick={() => { setView(ViewState.LEGAL_PRIVACY); window.scrollTo(0,0); }}>{t('footerPrivacyPolicy') || 'Privacy Policy'}</button>
+            </li>
+            <li>
+              <button className="hover:text-white transition-colors text-left" onClick={() => { setView(ViewState.LEGAL_TERMS); window.scrollTo(0,0); }}>{t('footerTerms') || 'Terms & Conditions'}</button>
+            </li>
+            <li>
+              <button className="hover:text-white transition-colors text-left" onClick={() => { setView(ViewState.LEGAL_NOTICE); window.scrollTo(0,0); }}>{t('footerLegalNotice') || 'Legal Notice'}</button>
+            </li>
+            <li>
+              <button className="hover:text-white transition-colors text-left" onClick={() => { setView(ViewState.LEGAL_COOKIES); window.scrollTo(0,0); }}>{t('footerCookiePolicy') || 'Cookie Policy'}</button>
             </li>
           </ul>
         </div>

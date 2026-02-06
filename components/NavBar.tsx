@@ -18,6 +18,7 @@ interface NavBarProps {
   onMobileMenuClick: () => void;
   adminUser: AdminUser | null;
   currentUser: boolean;
+  customer: { displayName: string } | null;
 }
 
 export const NavBar: React.FC<NavBarProps> = ({
@@ -33,6 +34,7 @@ export const NavBar: React.FC<NavBarProps> = ({
   onMobileMenuClick,
   adminUser,
   currentUser,
+  customer,
 }) => {
   const { t } = useTranslation();
 
@@ -149,14 +151,22 @@ export const NavBar: React.FC<NavBarProps> = ({
             {/* User */}
             <button
               className={`p-2 rounded-lg transition-colors ${
-                currentUser
+                customer
                   ? 'text-brand-primary bg-brand-primary-light'
-                  : 'text-brand-muted hover:text-brand-dark hover:bg-brand-light'
+                  : currentUser
+                    ? 'text-brand-primary bg-brand-primary-light'
+                    : 'text-brand-muted hover:text-brand-dark hover:bg-brand-light'
               }`}
               onClick={onUserClick}
               aria-label="User account"
             >
-              <User size={20} />
+              {customer ? (
+                <div className="w-5 h-5 bg-brand-primary rounded-full flex items-center justify-center text-white text-[10px] font-bold">
+                  {customer.displayName.charAt(0).toUpperCase()}
+                </div>
+              ) : (
+                <User size={20} />
+              )}
             </button>
 
             {/* Mobile Menu */}

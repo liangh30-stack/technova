@@ -31,8 +31,14 @@ interface CartDrawerProps {
   customerInfo: CustomerInfo;
   setCustomerInfo: (info: CustomerInfo | ((prev: CustomerInfo) => CustomerInfo)) => void;
   formErrors: Record<string, string>;
+  acceptTerms: boolean;
+  setAcceptTerms: (v: boolean) => void;
+  acceptPrivacy: boolean;
+  setAcceptPrivacy: (v: boolean) => void;
   onProceedToPayment: () => void;
   onPlaceOrder: (method: 'Stripe' | 'PayPal') => void;
+  customer: { displayName: string; email: string } | null;
+  onSignInClick: () => void;
 }
 
 const CartDrawer: React.FC<CartDrawerProps> = ({
@@ -48,8 +54,14 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
   customerInfo,
   setCustomerInfo,
   formErrors,
+  acceptTerms,
+  setAcceptTerms,
+  acceptPrivacy,
+  setAcceptPrivacy,
   onProceedToPayment,
-  onPlaceOrder
+  onPlaceOrder,
+  customer,
+  onSignInClick
 }) => {
   const { t } = useTranslation();
 
@@ -114,6 +126,17 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
 
           {checkoutStep === 'cart' && (
             <div className="space-y-4" role="list" aria-label={t('cartTitle') || 'Your Cart'}>
+              {!customer && cart.length > 0 && (
+                <div className="bg-brand-primary-light border border-brand-primary/20 rounded-lg p-3 mb-4 flex items-center justify-between">
+                  <span className="text-sm text-brand-dark">{t('cartSignInToSave') || 'Sign in to save your cart'}</span>
+                  <button
+                    onClick={onSignInClick}
+                    className="text-sm font-semibold text-brand-primary hover:text-brand-primary-dark transition-colors"
+                  >
+                    {t('customerLogin') || 'Sign In'}
+                  </button>
+                </div>
+              )}
               {cart.length === 0 ? (
                 <div className="py-20 text-center text-brand-muted opacity-60">{t('cartEmpty') || 'Your cart is empty'}</div>
               ) : (
@@ -204,6 +227,35 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                   aria-invalid={!!formErrors.address}
                 />
                 {formErrors.address && <p className="text-brand-critical text-xs mt-1" role="alert">{formErrors.address}</p>}
+              </div>
+
+              {/* Legal consent checkboxes */}
+              <div className="space-y-3 pt-2 border-t border-brand-border">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={acceptTerms}
+                    onChange={e => setAcceptTerms(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-brand-border text-brand-primary focus:ring-brand-primary/20"
+                  />
+                  <span className="text-xs text-brand-muted">
+                    {t('checkoutAcceptTerms') || 'I accept the Terms and Conditions'} *
+                  </span>
+                </label>
+                {formErrors.terms && <p className="text-brand-critical text-xs ml-6" role="alert">{t('checkoutTermsRequired') || formErrors.terms}</p>}
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={acceptPrivacy}
+                    onChange={e => setAcceptPrivacy(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-brand-border text-brand-primary focus:ring-brand-primary/20"
+                  />
+                  <span className="text-xs text-brand-muted">
+                    {t('checkoutAcceptPrivacy') || 'I have read and accept the Privacy Policy'} *
+                  </span>
+                </label>
+                {formErrors.privacy && <p className="text-brand-critical text-xs ml-6" role="alert">{t('checkoutPrivacyRequired') || formErrors.privacy}</p>}
               </div>
             </form>
           )}

@@ -1,15 +1,18 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Sparkles } from 'lucide-react';
+import { X, Sparkles, Heart, User } from 'lucide-react';
 import { ViewState } from '../types';
 
 interface MobileMenuProps {
   isOpen: boolean;
   onClose: () => void;
   setView: (view: ViewState) => void;
+  customer: { displayName: string } | null;
+  onCustomerAccountClick: () => void;
+  onSignInClick: () => void;
 }
 
-export const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose, setView }) => {
+export const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose, setView, customer, onCustomerAccountClick, onSignInClick }) => {
   const { t } = useTranslation();
 
   if (!isOpen) return null;
@@ -61,6 +64,24 @@ export const MobileMenu: React.FC<MobileMenuProps> = ({ isOpen, onClose, setView
           >
             <Sparkles size={16} className="text-brand-primary" /> {t('aiDesignNav') || 'AI Design'}
           </button>
+          <div className="border-t border-brand-border my-2" />
+          {customer ? (
+            <button
+              onClick={() => { onCustomerAccountClick(); onClose(); }}
+              className="w-full text-left p-4 rounded-lg hover:bg-brand-light font-semibold text-brand-dark flex items-center gap-2 transition-colors"
+              role="menuitem"
+            >
+              <User size={16} className="text-brand-primary" /> {t('customerMyAccount') || 'My Account'}
+            </button>
+          ) : (
+            <button
+              onClick={() => { onSignInClick(); onClose(); }}
+              className="w-full text-left p-4 rounded-lg hover:bg-brand-light font-semibold text-brand-primary flex items-center gap-2 transition-colors"
+              role="menuitem"
+            >
+              <User size={16} /> {t('customerLogin') || 'Sign In'}
+            </button>
+          )}
         </div>
       </div>
     </>

@@ -101,9 +101,11 @@ interface StorefrontProps {
   lang: Language;
   onTrackOrderClick: (searchTerm?: string) => void;
   onStartCustomDesign: () => void;
+  favorites: Set<string | number>;
+  onToggleFavorite: (productId: string | number) => void;
 }
 
-const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, onTrackOrderClick, onStartCustomDesign }) => {
+const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, onTrackOrderClick, onStartCustomDesign, favorites, onToggleFavorite }) => {
   const { t } = useTranslation();
   const [selectedBrand, setSelectedBrand] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -111,20 +113,7 @@ const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, on
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [detailSelectedModel, setDetailSelectedModel] = useState<string>('');
   const [productSearch, setProductSearch] = useState('');
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [showAllReviews, setShowAllReviews] = useState(false);
-
-  const toggleFavorite = (productId: string) => {
-    setFavorites(prev => {
-      const next = new Set(prev);
-      if (next.has(productId)) {
-        next.delete(productId);
-      } else {
-        next.add(productId);
-      }
-      return next;
-    });
-  };
 
   // Star rating component
   const StarRating = ({ rating, size = 12 }: { rating: number; size?: number }) => (
@@ -413,7 +402,7 @@ const Storefront: React.FC<StorefrontProps> = ({ products, onAddToCart, lang, on
 
                   {/* Favorite Button */}
                   <button
-                    onClick={(e) => { e.stopPropagation(); toggleFavorite(product.id); }}
+                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(product.id); }}
                     aria-label={favorites.has(product.id) ? t('removeFromFavorites', 'Remove from favorites') : t('addToFavorites', 'Add to favorites')}
                     aria-pressed={favorites.has(product.id)}
                     className={`absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center transition-all ${

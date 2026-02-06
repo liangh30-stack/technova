@@ -1,11 +1,12 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ViewState, Product, Language, Employee, RepairJob, InventoryItem, Order } from './types';
+import { ViewState, Product, Language, Employee, RepairJob, InventoryItem, Order, CustomerAddress, CustomerOrder } from './types';
 import { MOCK_PRODUCTS, EMPLOYEES, MOCK_INVENTORY, MOCK_REPAIRS, HOT_BUNDLE } from './constants';
 import { toLegacyLang, toI18nLang, LegacyLanguage } from './i18n';
 import { getProducts } from './services/productService';
 import { handleAsyncError } from './utils/errorHandler';
 import { onAuthChange, AdminUser } from './services/authService';
+import { getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, getCustomerOrders } from './services/customerService';
 import NavBar from './components/NavBar';
 import MobileMenu from './components/MobileMenu';
 import LoginModal from './components/LoginModal';
@@ -14,8 +15,14 @@ import HomeCarousel from './components/HomeCarousel';
 import SiteFooter from './components/SiteFooter';
 import { useCart } from './hooks/useCart';
 import { useCheckout } from './hooks/useCheckout';
+import { useCustomerAuth } from './hooks/useCustomerAuth';
+import { useFavorites } from './hooks/useFavorites';
 import { useLocalStorageState } from './hooks/useLocalStorageState';
 import { Loader2 } from 'lucide-react';
+
+// Lazy load customer components
+const CustomerAuthModal = lazy(() => import('./components/CustomerAuthModal'));
+const MyAccountPage = lazy(() => import('./components/MyAccountPage'));
 
 // Lazy load heavy components for better performance
 const Hero3D = lazy(() => import('./components/Hero3D'));
@@ -27,6 +34,8 @@ const Dashboard = lazy(() => import('./components/Dashboard'));
 const CustomCaseCreator = lazy(() => import('./components/CustomCaseCreator'));
 const AdminLogin = lazy(() => import('./components/AdminLogin'));
 const ProductManager = lazy(() => import('./components/ProductManager'));
+const LegalPage = lazy(() => import('./components/LegalPage'));
+const CookieConsentBanner = lazy(() => import('./components/CookieConsentBanner'));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -38,7 +47,21 @@ const PageLoader = () => (
 const App: React.FC = () => {
   const { i18n } = useTranslation();
   const [view, setView] = useState<ViewState>(ViewState.HOME);
-  const { cart, setCart, addToCart, removeFromCart, updateCartQuantity, cartTotal, cartItemCount } = useCart();
+
+  // Customer Auth
+  const { customer, login: customerLogin, register: customerRegister, logout: customerLogout, resetPassword: customerResetPassword, updateProfile: customerUpdateProfile } = useCustomerAuth();
+  const [isCustomerAuthOpen, setIsCustomerAuthOpen] = useState(false);
+
+  // Cart with customer sync
+  const { cart, setCart, addToCart, removeFromCart, updateCartQuantity, cartTotal, cartItemCount } = useCart(customer?.uid ?? null);
+
+  // Favorites with customer sync
+  const { favorites, toggleFavorite } = useFavorites(customer?.uid ?? null);
+
+  // Customer addresses & orders
+  const [customerAddresses, setCustomerAddresses] = useState<CustomerAddress[]>([]);
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
+
   // Keep legacy lang state for backwards compatibility with child components
   const [lang, setLang] = useState<Language>(() => toLegacyLang(i18n.language));
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
@@ -137,6 +160,42 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Load customer addresses & orders when customer logs in
+  useEffect(() => {
+    if (customer?.uid) {
+      getAddresses(customer.uid).then(setCustomerAddresses).catch(() => {});
+      getCustomerOrders(customer.uid).then(setCustomerOrders).catch(() => {});
+    } else {
+      setCustomerAddresses([]);
+      setCustomerOrders([]);
+    }
+  }, [customer?.uid]);
+
+  // Customer address CRUD callbacks
+  const handleAddAddress = useCallback(async (address: Omit<CustomerAddress, 'id'>) => {
+    if (!customer) return;
+    const newAddr = await addAddress(customer.uid, address);
+    setCustomerAddresses(prev => [...prev, newAddr]);
+  }, [customer]);
+
+  const handleUpdateAddress = useCallback(async (id: string, data: Partial<CustomerAddress>) => {
+    if (!customer) return;
+    await updateAddress(customer.uid, id, data);
+    setCustomerAddresses(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+  }, [customer]);
+
+  const handleDeleteAddress = useCallback(async (id: string) => {
+    if (!customer) return;
+    await deleteAddress(customer.uid, id);
+    setCustomerAddresses(prev => prev.filter(a => a.id !== id));
+  }, [customer]);
+
+  const handleSetDefaultAddress = useCallback(async (id: string) => {
+    if (!customer) return;
+    await setDefaultAddress(customer.uid, id);
+    setCustomerAddresses(prev => prev.map(a => ({ ...a, isDefault: a.id === id })));
+  }, [customer]);
+
   const handleAdminLogout = () => {
     setAdminUser(null);
     setView(ViewState.HOME);
@@ -168,6 +227,10 @@ const App: React.FC = () => {
     customerInfo,
     setCustomerInfo,
     formErrors,
+    acceptTerms,
+    setAcceptTerms,
+    acceptPrivacy,
+    setAcceptPrivacy,
     handleProceedToPayment,
     handlePlaceOrder
   } = useCheckout({
@@ -175,7 +238,8 @@ const App: React.FC = () => {
     cartTotal,
     orders,
     setOrders,
-    setCart
+    setCart,
+    customerUid: customer?.uid ?? null
   });
 
   const handleAddToCart = (product: Product) => {
@@ -196,15 +260,19 @@ const App: React.FC = () => {
         cartItemCount={cartItemCount}
         onCartClick={() => { setIsCartOpen(true); setCheckoutStep('cart'); }}
         onUserClick={() => {
-          if (currentUser) {
+          if (customer) {
+            setView(ViewState.CUSTOMER_ACCOUNT);
+            window.scrollTo(0, 0);
+          } else if (currentUser) {
             setView(ViewState.EMPLOYEE_DASHBOARD);
           } else {
-            setIsLoginModalOpen(true);
+            setIsCustomerAuthOpen(true);
           }
         }}
         onMobileMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         adminUser={adminUser}
         currentUser={!!currentUser}
+        customer={customer}
       />
 
       <LoginModal
@@ -215,11 +283,26 @@ const App: React.FC = () => {
         onLogin={handleLogin}
       />
 
+      {/* Customer Auth Modal */}
+      <Suspense fallback={null}>
+        <CustomerAuthModal
+          isOpen={isCustomerAuthOpen}
+          onClose={() => setIsCustomerAuthOpen(false)}
+          onLoginSuccess={() => {}}
+          login={customerLogin}
+          register={customerRegister}
+          resetPassword={customerResetPassword}
+        />
+      </Suspense>
+
       {/* Mobile Menu */}
       <MobileMenu
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
         setView={setView}
+        customer={customer}
+        onCustomerAccountClick={() => { setView(ViewState.CUSTOMER_ACCOUNT); window.scrollTo(0, 0); }}
+        onSignInClick={() => setIsCustomerAuthOpen(true)}
       />
 
       <CartDrawer
@@ -235,8 +318,14 @@ const App: React.FC = () => {
         customerInfo={customerInfo}
         setCustomerInfo={setCustomerInfo}
         formErrors={formErrors}
+        acceptTerms={acceptTerms}
+        setAcceptTerms={setAcceptTerms}
+        acceptPrivacy={acceptPrivacy}
+        setAcceptPrivacy={setAcceptPrivacy}
         onProceedToPayment={handleProceedToPayment}
         onPlaceOrder={handlePlaceOrder}
+        customer={customer}
+        onSignInClick={() => { setIsCartOpen(false); setIsCustomerAuthOpen(true); }}
       />
 
       {/* Main Content */}
@@ -265,6 +354,8 @@ const App: React.FC = () => {
                   window.scrollTo(0,0);
                 }}
                 onStartCustomDesign={() => { setView(ViewState.CUSTOM_CASE); window.scrollTo(0,0); }}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
               />
             )}
           </>
@@ -303,6 +394,33 @@ const App: React.FC = () => {
           />
         )}
 
+        {/* Customer Account */}
+        {view === ViewState.CUSTOMER_ACCOUNT && customer && (
+          <MyAccountPage
+            customer={customer}
+            onLogout={async () => { await customerLogout(); setView(ViewState.HOME); }}
+            onBack={() => { setView(ViewState.HOME); window.scrollTo(0, 0); }}
+            orders={customerOrders}
+            addresses={customerAddresses}
+            favorites={favorites}
+            products={products}
+            onUpdateProfile={customerUpdateProfile}
+            onAddAddress={handleAddAddress}
+            onUpdateAddress={handleUpdateAddress}
+            onDeleteAddress={handleDeleteAddress}
+            onSetDefaultAddress={handleSetDefaultAddress}
+            onToggleFavorite={toggleFavorite}
+            onAddToCart={handleAddToCart}
+          />
+        )}
+        {view === ViewState.CUSTOMER_ACCOUNT && !customer && (
+          <NotFound
+            onBack={() => setView(ViewState.HOME)}
+            title="Please sign in"
+            message="You need to sign in to access your account."
+          />
+        )}
+
         {/* Admin Panel Views */}
         {view === ViewState.ADMIN && !adminUser && (
           <AdminLogin
@@ -318,18 +436,54 @@ const App: React.FC = () => {
             onBack={() => setView(ViewState.HOME)}
           />
         )}
+
+        {/* Legal Pages */}
+        {view === ViewState.LEGAL_PRIVACY && (
+          <LegalPage page="privacy" onBack={() => setView(ViewState.HOME)} onNavigate={(p) => {
+            const map = { privacy: ViewState.LEGAL_PRIVACY, terms: ViewState.LEGAL_TERMS, legal: ViewState.LEGAL_NOTICE, cookies: ViewState.LEGAL_COOKIES };
+            setView(map[p]); window.scrollTo(0, 0);
+          }} />
+        )}
+        {view === ViewState.LEGAL_TERMS && (
+          <LegalPage page="terms" onBack={() => setView(ViewState.HOME)} onNavigate={(p) => {
+            const map = { privacy: ViewState.LEGAL_PRIVACY, terms: ViewState.LEGAL_TERMS, legal: ViewState.LEGAL_NOTICE, cookies: ViewState.LEGAL_COOKIES };
+            setView(map[p]); window.scrollTo(0, 0);
+          }} />
+        )}
+        {view === ViewState.LEGAL_NOTICE && (
+          <LegalPage page="legal" onBack={() => setView(ViewState.HOME)} onNavigate={(p) => {
+            const map = { privacy: ViewState.LEGAL_PRIVACY, terms: ViewState.LEGAL_TERMS, legal: ViewState.LEGAL_NOTICE, cookies: ViewState.LEGAL_COOKIES };
+            setView(map[p]); window.scrollTo(0, 0);
+          }} />
+        )}
+        {view === ViewState.LEGAL_COOKIES && (
+          <LegalPage page="cookies" onBack={() => setView(ViewState.HOME)} onNavigate={(p) => {
+            const map = { privacy: ViewState.LEGAL_PRIVACY, terms: ViewState.LEGAL_TERMS, legal: ViewState.LEGAL_NOTICE, cookies: ViewState.LEGAL_COOKIES };
+            setView(map[p]); window.scrollTo(0, 0);
+          }} />
+        )}
         </Suspense>
       </main>
 
-      {view !== ViewState.EMPLOYEE_DASHBOARD && view !== ViewState.ADMIN && (
+      {view !== ViewState.EMPLOYEE_DASHBOARD && view !== ViewState.ADMIN && view !== ViewState.CUSTOMER_ACCOUNT && (
         <Suspense fallback={null}>
           <AIAssistant />
         </Suspense>
       )}
 
-      {view !== ViewState.EMPLOYEE_DASHBOARD && view !== ViewState.ADMIN && (
-        <SiteFooter onOpenLogin={() => setIsLoginModalOpen(true)} setView={setView} />
+      {view !== ViewState.EMPLOYEE_DASHBOARD && view !== ViewState.ADMIN && view !== ViewState.CUSTOMER_ACCOUNT && (
+        <SiteFooter
+          onOpenLogin={() => setIsLoginModalOpen(true)}
+          setView={setView}
+          customer={!!customer}
+          onCustomerAccountClick={() => { setView(ViewState.CUSTOMER_ACCOUNT); window.scrollTo(0, 0); }}
+        />
       )}
+
+      {/* Cookie Consent Banner */}
+      <Suspense fallback={null}>
+        <CookieConsentBanner onViewCookiePolicy={() => { setView(ViewState.LEGAL_COOKIES); window.scrollTo(0, 0); }} />
+      </Suspense>
     </div>
   );
 };

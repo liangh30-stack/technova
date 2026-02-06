@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Employee } from '../types';
 import { Clock, MapPin, UserCheck, AlertTriangle } from 'lucide-react';
 
@@ -10,6 +11,7 @@ interface AttendancePanelProps {
 }
 
 const AttendancePanel: React.FC<AttendancePanelProps> = ({ employees, onClockIn, currentUser, onUpdateSchedule }) => {
+  const { t } = useTranslation();
   const [selectedEmp, setSelectedEmp] = useState<string>('');
   const [pin, setPin] = useState('');
   
@@ -19,7 +21,7 @@ const AttendancePanel: React.FC<AttendancePanelProps> = ({ employees, onClockIn,
     if (!emp) return;
     
     if (emp.pin !== pin) {
-      alert("PIN Incorrecto");
+      alert(t('attendancePINError') || 'PIN Incorrecto');
       return;
     }
 
@@ -28,10 +30,10 @@ const AttendancePanel: React.FC<AttendancePanelProps> = ({ employees, onClockIn,
       (pos) => {
         onClockIn(selectedEmp, type, pos.coords.latitude, pos.coords.longitude);
         setPin('');
-        alert("Fichaje registrado con éxito");
+        alert(t('attendanceSuccess') || 'Fichaje registrado con éxito');
       },
       (err) => {
-        alert("Error de ubicación: " + err.message);
+        alert((t('attendanceLocationError') || 'Error de ubicación') + ': ' + err.message);
         // Fallback for dev without https
         onClockIn(selectedEmp, type, 42.1611, -8.6133); 
       }
@@ -40,79 +42,81 @@ const AttendancePanel: React.FC<AttendancePanelProps> = ({ employees, onClockIn,
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-8 text-center shadow-xl">
-         <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-slate-700">
-           <Clock size={48} className="text-blue-500" />
+      <div className="bg-white rounded-lg border border-brand-border p-8 text-center shadow-xl" role="form" aria-label={t('attendanceTitle') || 'Fichaje'}>
+         <div className="w-24 h-24 bg-brand-light rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-brand-border">
+           <Clock size={48} className="text-brand-primary" />
          </div>
-         <h2 className="text-3xl font-bold text-white mb-2">{new Date().toLocaleTimeString()}</h2>
-         <p className="text-slate-400 mb-8">{new Date().toLocaleDateString()}</p>
+         <h2 className="text-3xl font-bold text-brand-dark mb-2" aria-live="polite">{new Date().toLocaleTimeString()}</h2>
+         <p className="text-brand-text-tertiary mb-8">{new Date().toLocaleDateString()}</p>
 
          <div className="max-w-md mx-auto space-y-4">
-           <select 
-             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white outline-none"
+           <select
+             className="w-full bg-white border border-brand-border rounded-lg px-4 py-3 text-brand-dark outline-none"
              value={selectedEmp}
              onChange={e => setSelectedEmp(e.target.value)}
+             aria-label={t('attendanceSelectEmployee') || 'Selecciona tu nombre'}
            >
-             <option value="">Selecciona tu nombre...</option>
+             <option value="">{t('attendanceSelectEmployee') || 'Selecciona tu nombre...'}</option>
              {employees.filter(e => e.store === currentUser.store || currentUser.role === 'admin').map(e => (
                <option key={e.id} value={e.id}>{e.name}</option>
              ))}
            </select>
 
            {selectedEmp && (
-             <input 
+             <input
                type="password"
-               placeholder="PIN de 4 dígitos"
-               className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white text-center tracking-widest outline-none"
+               placeholder={t('attendancePINPlaceholder') || 'PIN de 4 dígitos'}
+               className="w-full bg-white border border-brand-border rounded-lg px-4 py-3 text-brand-dark text-center tracking-[0.5em] outline-none"
                value={pin}
                onChange={e => setPin(e.target.value)}
                maxLength={4}
+               aria-label={t('attendancePIN') || 'PIN'}
              />
            )}
 
            <div className="grid grid-cols-2 gap-4 pt-4">
-             <button 
+             <button
                onClick={() => handleAction('IN')}
-               className="bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-900/20 active:scale-95 transition-transform"
+               className="bg-brand-success hover:opacity-90 text-white font-semibold py-4 rounded-lg active:scale-95 transition-transform"
              >
-               ENTRADA
+               {t('attendanceCheckIn') || 'ENTRADA'}
              </button>
-             <button 
+             <button
                onClick={() => handleAction('OUT')}
-               className="bg-red-600 hover:bg-red-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-red-900/20 active:scale-95 transition-transform"
+               className="bg-brand-critical hover:opacity-90 text-white font-semibold py-4 rounded-lg active:scale-95 transition-transform"
              >
-               SALIDA
+               {t('attendanceCheckOut') || 'SALIDA'}
              </button>
-             <button 
+             <button
                onClick={() => handleAction('BREAK_START')}
-               className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-xl text-sm"
+               className="bg-brand-warning hover:opacity-90 text-white font-semibold py-3 rounded-lg text-sm"
              >
-               PAUSA (Café/Comida)
+               {t('attendancePause') || 'PAUSA'} ({t('attendancePauseDetail') || 'Café/Comida'})
              </button>
-             <button 
+             <button
                onClick={() => handleAction('BREAK_END')}
-               className="bg-slate-600 hover:bg-slate-500 text-white font-bold py-3 rounded-xl text-sm"
+               className="bg-brand-info hover:opacity-90 text-white font-semibold py-3 rounded-lg text-sm"
              >
-               VOLVER
+               {t('attendanceResume') || 'VOLVER'}
              </button>
            </div>
          </div>
       </div>
       
       {currentUser.role === 'admin' && (
-        <div className="mt-8 bg-slate-900 rounded-2xl border border-slate-800 p-6">
-           <h3 className="text-xl font-bold text-white mb-4">Registro de Hoy</h3>
+        <div className="mt-8 bg-brand-light rounded-lg border border-brand-border p-6">
+           <h3 className="text-xl font-bold text-brand-dark mb-4">{t('attendanceLog') || 'Registro de Fichajes'}</h3>
            <div className="space-y-2">
              {employees.filter(e => e.attendanceHistory.length > 0).map(e => {
                const today = e.attendanceHistory.find(r => r.date === new Date().toISOString().split('T')[0]);
                if (!today) return null;
                return (
-                 <div key={e.id} className="flex justify-between items-center bg-slate-800 p-3 rounded-lg">
-                    <span className="text-white font-medium">{e.name}</span>
-                    <div className="text-sm text-slate-400">
-                      IN: {today.clockIn ? new Date(today.clockIn).toLocaleTimeString() : '--'} | 
+                 <div key={e.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-brand-border">
+                    <span className="text-brand-dark font-medium">{e.name}</span>
+                    <div className="text-sm text-brand-text-tertiary">
+                      IN: {today.clockIn ? new Date(today.clockIn).toLocaleTimeString() : '--'} |
                       OUT: {today.clockOut ? new Date(today.clockOut).toLocaleTimeString() : '--'}
-                      {today.isLate && <span className="ml-2 text-red-400 font-bold text-xs flex items-center inline-flex gap-1"><AlertTriangle size={10}/> LATE ({today.latenessMinutes}m)</span>}
+                      {today.isLate && <span className="ml-2 text-brand-critical font-bold text-xs flex items-center inline-flex gap-1" role="alert"><AlertTriangle size={10}/> LATE ({today.latenessMinutes}m)</span>}
                     </div>
                  </div>
                );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { LogIn } from 'lucide-react';
 
 interface LoginModalProps {
@@ -10,21 +11,27 @@ interface LoginModalProps {
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, loginPin, setLoginPin, onClose, onLogin }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
     <>
       <div
-        className="fixed inset-0 bg-black/60 z-[100] backdrop-blur-sm animate-in fade-in"
+        className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
         onClick={onClose}
       />
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-[#0d1525] z-[110] rounded-[2rem] p-10 shadow-2xl border border-white/10 animate-in zoom-in-95">
+      <div
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white z-[110] rounded-lg border border-brand-border shadow-xl p-8"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('loginDialogLabel') || 'Staff login'}
+      >
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-blue-400 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-500/20 rotate-3">
+          <div className="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
             <LogIn size={36} className="text-white -mr-1" />
           </div>
-          <h3 className="text-2xl font-black text-white tracking-tight">Staff Portal</h3>
-          <p className="text-slate-400 text-sm mt-2 font-medium">Enter PIN to access Admin Dashboard</p>
+          <h3 className="text-2xl font-bold text-brand-primary tracking-tight">{t('loginStaffPortal') || 'Staff Portal'}</h3>
+          <p className="text-brand-muted text-sm mt-2 font-medium">{t('loginEnterPIN') || 'Enter PIN to access Admin Dashboard'}</p>
         </div>
 
         <div className="relative group">
@@ -36,19 +43,19 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, loginPin, setLoginPin, 
             onKeyDown={e => e.key === 'Enter' && onLogin()}
             placeholder="••••"
             autoFocus
-            className="w-full bg-[#050912] border border-white/10 rounded-2xl py-5 text-center text-4xl tracking-[1.2rem] text-white focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 outline-none mb-8 font-mono transition-all placeholder:tracking-normal placeholder:text-slate-700"
+            className="w-full bg-white border-2 border-brand-border rounded-lg py-5 text-center text-3xl tracking-[0.5em] text-brand-dark focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none mb-8 font-mono transition-all placeholder:tracking-normal placeholder:text-brand-text-tertiary"
+            aria-label={t('loginPINInput') || 'Enter your PIN'}
           />
-          <div className="absolute inset-x-0 -bottom-2 h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent opacity-0 group-focus-within:opacity-100 transition-opacity"></div>
         </div>
 
         <button
           onClick={onLogin}
-          className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg hover:bg-blue-500 active:scale-95 transition-all shadow-2xl shadow-blue-500/30"
+          className="w-full bg-brand-primary hover:bg-brand-primary-dark text-white py-5 rounded-lg font-semibold text-lg active:scale-95 transition-all"
         >
-          Enter Backend
+          {t('loginEnterBackend') || 'Enter Backend'}
         </button>
 
-        <p className="text-center text-[10px] text-slate-500 mt-6 uppercase tracking-widest font-bold">Authorized Personnel Only</p>
+        <p className="text-center text-xs text-brand-text-tertiary mt-6 uppercase tracking-widest font-bold">{t('loginAuthorizedOnly') || 'Authorized Personnel Only'}</p>
       </div>
     </>
   );
