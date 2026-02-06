@@ -31,7 +31,7 @@ const ProductManager = lazy(() => import('./components/ProductManager'));
 // Loading fallback component
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-[400px]">
-    <Loader2 size={32} className="animate-spin text-brand-pink" />
+    <Loader2 size={32} className="animate-spin text-brand-primary" />
   </div>
 );
 
@@ -184,7 +184,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-brand-light overflow-x-hidden">
       {/* Navigation */}
       <NavBar
         view={view}
@@ -252,7 +252,7 @@ const App: React.FC = () => {
             
             {isLoadingProducts ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 size={32} className="animate-spin text-brand-pink" />
+                <Loader2 size={32} className="animate-spin text-brand-primary" />
               </div>
             ) : (
               <Storefront

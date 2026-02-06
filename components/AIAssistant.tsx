@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bot, Image as ImageIcon, Send, X, Loader2, BrainCircuit, MessageSquare, Sparkles } from 'lucide-react';
 import { chatWithAssistant, chatWithThinking, analyzeImage } from '../services/geminiService';
 
 const AIAssistant: React.FC = () => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<'chat' | 'vision' | 'think'>('chat');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<{role: 'user' | 'assistant', text: string, type?: string}[]>([
-    { role: 'assistant', text: "Hello! I'm your AI technical assistant. How can I help you today?" }
+    { role: 'assistant', text: t('aiWelcome') || "Hello! I'm your AI technical assistant. How can I help you today?" }
   ]);
   const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -28,7 +30,7 @@ const AIAssistant: React.FC = () => {
         const base64Data = base64String.split(',')[1];
         setSelectedImage(base64Data);
         setMode('vision');
-        setMessages(prev => [...prev, { role: 'assistant', text: "Image uploaded! What should I look for?" }]);
+        setMessages(prev => [...prev, { role: 'assistant', text: t('aiImageUploaded') || "Image uploaded! What should I look for?" }]);
       };
       reader.readAsDataURL(file);
     }
@@ -39,7 +41,7 @@ const AIAssistant: React.FC = () => {
 
     const currentInput = input;
     const currentImage = selectedImage;
-    
+
     setMessages(prev => [...prev, { role: 'user', text: currentInput || (currentImage ? "[Image Analysis Request]" : "") }]);
     setInput('');
     setLoading(true);
@@ -57,7 +59,7 @@ const AIAssistant: React.FC = () => {
         response = await chatWithAssistant(currentInput);
       }
     } catch (e) {
-      response = "Sorry, I encountered an error processing that request.";
+      response = t('aiError') || "Sorry, I encountered an error processing that request.";
     }
 
     setMessages(prev => [...prev, { role: 'assistant', text: response, type: mode }]);
@@ -66,63 +68,78 @@ const AIAssistant: React.FC = () => {
 
   return (
     <>
-      <button 
+      <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-50 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-full shadow-lg hover:shadow-blue-500/30 transition-all hover:scale-110 flex items-center justify-center"
+        className="fixed bottom-6 right-6 z-50 bg-brand-primary hover:bg-brand-primary-dark text-white p-4 rounded-lg shadow-lg transition-all hover:scale-110 flex items-center justify-center"
+        aria-label={isOpen ? 'Close assistant' : 'Open assistant'}
       >
         {isOpen ? <X size={24} /> : <Bot size={24} />}
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-80 md:w-96 h-[500px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300 font-sans">
-          
+        <div
+          className="fixed bottom-24 right-6 z-50 w-80 md:w-96 h-[500px] bg-white border border-brand-border rounded-lg shadow-xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300 font-sans"
+          role="dialog"
+          aria-label={t('aiAssistantTitle') || 'TechNova Assistant'}
+        >
+
           {/* Header */}
-          <div className="bg-slate-800 p-3 border-b border-slate-700">
+          <div className="bg-brand-light p-3 border-b border-brand-border">
             <div className="flex items-center gap-2 mb-3">
-              <div className="bg-indigo-500/20 p-1.5 rounded-lg">
-                <Sparkles size={18} className="text-indigo-400" />
+              <div className="bg-brand-primary-light p-1.5 rounded-lg" aria-hidden="true">
+                <Sparkles size={18} className="text-brand-primary" />
               </div>
-              <h3 className="font-bold text-white text-sm">Gemini AI Assistant</h3>
+              <h3 className="font-bold text-brand-dark text-sm">{t('aiAssistantTitle') || 'TechNova Assistant'}</h3>
             </div>
-            
+
             {/* Mode Toggles */}
-            <div className="flex bg-slate-900 p-1 rounded-lg">
-               <button 
+            <div className="flex bg-white p-1 rounded-lg border border-brand-border" role="tablist" aria-label="Assistant mode">
+               <button
                  onClick={() => setMode('chat')}
-                 className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === 'chat' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                 role="tab"
+                 aria-selected={mode === 'chat'}
+                 aria-label={t('aiChat') || 'Chat'}
+                 className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === 'chat' ? 'bg-brand-primary text-white' : 'text-brand-muted hover:text-brand-dark'}`}
                >
-                 <MessageSquare size={14} /> Chat
+                 <MessageSquare size={14} /> {t('aiChat') || 'Chat'}
                </button>
-               <button 
+               <button
                  onClick={() => setMode('think')}
-                 className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === 'think' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                 role="tab"
+                 aria-selected={mode === 'think'}
+                 aria-label={t('aiThink') || 'Think'}
+                 className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === 'think' ? 'bg-brand-info text-white' : 'text-brand-muted hover:text-brand-dark'}`}
                >
-                 <BrainCircuit size={14} /> Think
+                 <BrainCircuit size={14} /> {t('aiThink') || 'Think'}
                </button>
-               <button 
+               <button
                  onClick={() => fileInputRef.current?.click()}
-                 className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === 'vision' ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                 role="tab"
+                 aria-selected={mode === 'vision'}
+                 aria-label={t('aiVision') || 'Vision'}
+                 className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium rounded-md transition-colors ${mode === 'vision' ? 'bg-brand-accent text-white' : 'text-brand-muted hover:text-brand-dark'}`}
                >
-                 <ImageIcon size={14} /> Vision
+                 <ImageIcon size={14} /> {t('aiVision') || 'Vision'}
                </button>
-               <input 
-                 type="file" 
-                 ref={fileInputRef} 
-                 className="hidden" 
+               <input
+                 type="file"
+                 ref={fileInputRef}
+                 className="hidden"
                  accept="image/*"
-                 onChange={handleImageUpload} 
+                 onChange={handleImageUpload}
+                 aria-label="Upload image for vision analysis"
                />
             </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-950">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white" role="log" aria-label="Chat messages">
             {messages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                  msg.role === 'user' 
-                  ? 'bg-blue-600 text-white rounded-br-none' 
-                  : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'
+                <div className={`max-w-[85%] rounded-lg px-4 py-2.5 text-sm ${
+                  msg.role === 'user'
+                  ? 'bg-brand-primary text-white rounded-br-none'
+                  : 'bg-brand-light text-brand-dark rounded-bl-none border border-brand-border'
                 }`}>
                   {msg.text}
                 </div>
@@ -130,9 +147,9 @@ const AIAssistant: React.FC = () => {
             ))}
             {loading && (
               <div className="flex justify-start">
-                 <div className="bg-slate-800 rounded-2xl rounded-bl-none px-4 py-3 border border-slate-700 flex items-center gap-2 text-slate-400 text-xs">
+                 <div className="bg-brand-light rounded-lg rounded-bl-none px-4 py-3 border border-brand-border flex items-center gap-2 text-brand-muted text-xs" aria-live="polite">
                     <Loader2 size={14} className="animate-spin" />
-                    {mode === 'think' ? 'Thinking deeply...' : mode === 'vision' ? 'Analyzing image...' : 'Typing...'}
+                    {mode === 'think' ? (t('aiThinkingDeeply') || 'Thinking deeply...') : mode === 'vision' ? (t('aiAnalyzingImage') || 'Analyzing image...') : (t('aiTyping') || 'Typing...')}
                  </div>
               </div>
             )}
@@ -140,28 +157,40 @@ const AIAssistant: React.FC = () => {
           </div>
 
           {/* Input Area */}
-          <div className="p-3 bg-slate-800 border-t border-slate-700">
+          <div className="p-3 bg-brand-light border-t border-brand-border">
              {selectedImage && (
-               <div className="flex items-center gap-2 mb-2 bg-slate-900 p-2 rounded-lg border border-slate-700">
-                 <div className="w-8 h-8 bg-slate-700 rounded flex items-center justify-center">
-                   <ImageIcon size={16} className="text-slate-400"/>
+               <div className="flex items-center gap-2 mb-2 bg-white p-2 rounded-lg border border-brand-border">
+                 <div className="w-8 h-8 bg-brand-light rounded-lg flex items-center justify-center" aria-hidden="true">
+                   <ImageIcon size={16} className="text-brand-muted"/>
                  </div>
-                 <span className="text-xs text-slate-300 flex-1 truncate">Image loaded</span>
-                 <button onClick={() => { setSelectedImage(null); setMode('chat'); }} className="text-slate-500 hover:text-white"><X size={14}/></button>
+                 <span className="text-xs text-brand-muted flex-1 truncate">{t('aiImageLoaded') || 'Image loaded'}</span>
+                 <button
+                   onClick={() => { setSelectedImage(null); setMode('chat'); }}
+                   className="text-brand-text-tertiary hover:text-brand-dark"
+                   aria-label="Remove uploaded image"
+                 >
+                   <X size={14}/>
+                 </button>
                </div>
              )}
              <div className="flex gap-2">
-               <input 
-                 type="text" 
+               <input
+                 type="text"
                  value={input}
                  onChange={e => setInput(e.target.value)}
                  onKeyDown={e => e.key === 'Enter' && handleSend()}
-                 placeholder={mode === 'think' ? "Ask a complex question..." : "Type a message..."}
-                 className="flex-1 bg-slate-900 border border-slate-600 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                 placeholder={mode === 'think' ? (t('aiAskComplex') || "Ask a complex question...") : (t('aiTypeMessage') || "Type a message...")}
+                 className="flex-1 bg-white border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-dark focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/20"
+                 aria-label={t('aiTypeMessage') || "Type a message"}
                />
-               <button 
+               <button
                  onClick={handleSend}
-                 className={`p-2 rounded-xl transition-colors text-white ${mode === 'think' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-blue-600 hover:bg-blue-500'}`}
+                 className={`p-2 rounded-lg transition-colors text-white ${
+                   mode === 'think' ? 'bg-brand-info hover:bg-blue-700' :
+                   mode === 'vision' ? 'bg-brand-accent hover:bg-orange-600' :
+                   'bg-brand-primary hover:bg-brand-primary-dark'
+                 }`}
+                 aria-label="Send message"
                >
                  <Send size={18} />
                </button>
